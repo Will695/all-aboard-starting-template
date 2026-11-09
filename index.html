@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#006A4D" />
+  <title>Lloyds Banking Group · New Starter Journey</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script>(function(){try{var p=JSON.parse(localStorage.getItem('lbg.a11y')||'{}');var t=p.theme||'system';var d=t==='dark'||(t==='system'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.setProperty('--fs',({normal:'100%',large:'118%',xlarge:'136%'})[p.scale||'normal']);}catch(e){}})();</script>
+</head>
+<body>
+  <a class="skip-link" href="#app">Skip to main content</a>
+  <header class="topbar">
+    <div class="brand">
+      <img class="brand-logo" src="brand/lloyds-logo-white.png" alt="Lloyds" />
+      <span class="brand-text"><strong>Banking Group</strong><span>New starter journey</span></span>
+    </div>
+    <div class="topbar-user" id="topbar-user"></div>
+  </header>
+
+  <div class="shell">
+    <nav class="sidenav" id="sidenav" aria-label="Main navigation"></nav>
+    <main class="content" id="app" tabindex="-1"></main>
+  </div>
+
+  <nav class="tabbar" id="tabbar" aria-label="Mobile navigation"></nav>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="data.js"></script>
+  <script src="manager-data.js"></script>
+  <script src="shared.js"></script>
+  <script src="chat.js"></script>
+  <script src="day30-data.js"></script>
+  <script src="assistant.js"></script>
+  <script src="app.js"></script>
+  <script src="a11y.js"></script>
+</body>
+</html>
