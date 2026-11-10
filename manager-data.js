@@ -56,7 +56,7 @@ const ACCESS_PACKS = {
   'case-mgmt': { name: 'Case management', items: ['Customer case system', 'Complaints queue'], approval: false },
 };
 
-// Home equipment the new starter can order once they have signed their contract (one week before start).
+// Home equipment the new starter can order once they have signed their contract .
 // Allowance is the amount the bank covers. Anything above it needs the manager to approve.
 const HOME_KIT_ALLOWANCE = 600;
 const HOME_KIT = [

@@ -92,7 +92,7 @@
     const msgs = CHAT.thread(HIRE_ID, 'buddy');
     const last = msgs[msgs.length - 1];
     const unread = CHAT.unread(HIRE_ID, 'buddy', 'buddy');
-    const days = Math.round((hire.startDate - TODAY) / 86400000);
+    const days = Math.round((effectiveStart(HIRE_ID) - TODAY) / 86400000);
     return `
       <div class="stack" style="gap:6px">
         <p class="eyebrow">Buddy portal</p>
@@ -110,7 +110,7 @@
           ${unread ? `<span class="pill amber">${unread} new</span>` : '<span class="pill grey">Up to date</span>'}
         </div>
         <div class="hire-meta">
-          <span class="pill grey">Starts ${fmtShort(hire.startDate)}</span>
+          <span class="pill grey">Starts ${fmtShort(effectiveStart(HIRE_ID))}</span>
           <span class="pill grey">${days} days to go</span>
         </div>
         ${last ? `<div class="next-step"><span class="eyebrow">Last message</span> ${esc(last.text)}</div>` : ''}
@@ -130,7 +130,7 @@
     const msgs = CHAT.thread(HIRE_ID, 'buddy');
     const bubbles = msgs.map((m) => {
       const mine = m.from === 'buddy';
-      const who = mine ? 'You' : hire.name;
+      const who = mine ? 'You' : (m.from === 'hr' ? (m.name || 'Onboarding team') : hire.name);
       const time = dt(m.time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
       return `<div class="bubble ${mine ? 'mine' : ''}">
         <div class="small muted">${esc(who)} · ${time}</div>
@@ -143,7 +143,7 @@
       <div class="stack" style="gap:6px;margin-top:10px">
         <p class="eyebrow">Chat with your new starter</p>
         <h1>${esc(hire.name)}</h1>
-        <p class="muted">${esc(hire.title)} · starts ${fmtLong(hire.startDate)}</p>
+        <p class="muted">${esc(hire.title)} · starts ${fmtLong(effectiveStart(HIRE_ID))}</p>
       </div>
 
       <div class="card" style="margin-top:16px">
@@ -174,8 +174,12 @@
     let html;
     if (section === 'chat' && id === HIRE_ID) { html = renderChat(); chrome(''); }
     else { html = renderHome(); chrome(''); }
+    // Keep the scroll position when the same page is re-drawn, and go to the top on a new page
+    const samePage = route.last === raw;
+    const keepY = window.scrollY;
     $('#app').innerHTML = html;
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    window.scrollTo({ top: samePage ? keepY : 0, behavior: 'instant' });
+    route.last = raw;
   }
 
   document.addEventListener('click', (ev) => {

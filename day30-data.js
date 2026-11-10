@@ -114,3 +114,27 @@ const PURPOSE_CASCADE = [
   { level: 'What you do', want: 'Deliver accurate analysis for your product area, handle data safely, and share what you learn with your team.',
     why: 'Your work is what the business sees day to day. A report that is right and on time lets a team act with confidence.', you: true },
 ];
+
+// Comms channels the new starter is pointed to. Joining is recorded in the app.
+const COMMS_CHANNELS = [
+  { id: 'cdi', name: 'Commercial Data and Insight (team channel)', kind: 'Team', desc: 'Your team\'s day-to-day channel for questions, files and updates.' },
+  { id: 'news', name: 'Lloyds Banking Group news', kind: 'News', desc: 'Weekly bank news, results and the things people are talking about.' },
+  { id: 'early', name: 'Early Careers Network channel', kind: 'Community', desc: 'For colleagues in their first three years. Mentoring and social events.' },
+  { id: 'wellbeing', name: 'Wellbeing and support', kind: 'Wellbeing', desc: 'Support, events and reminders about the free, confidential EAP.' },
+];
+
+// The welcome pack, sent once goals are set
+const WELCOME_PACK = [
+  { id: 'letter', title: 'Welcome letter from Jordan', body: 'Welcome to the team. You have a clear first month: learn the tools, meet the people, and finish your goals. Your buddy Sam will be in touch before you start. If you are unsure about anything, ask. No question is too small.' },
+  { id: 'week1', title: 'Your first week guide', body: 'Day 1: arrive at 9:00 at reception, induction and IT set-up. Week 1: your one-to-one with Jordan on Wednesday, team intro calls, and your first training videos. Lunch with the team on Day 1 at 12:30.' },
+  { id: 'handbook', title: 'Team handbook', body: 'How we plan work in short cycles, how we run meetings, when to use Teams chat or a call, and who to ask about what.' },
+  { id: 'it', title: 'IT and security quick guide', body: 'Sign in with SSO, approve the MFA prompt, lock your screen when you step away, and report anything that looks like phishing straight away.' },
+];
+
+// Day 30 check-in questions. Points: good 0, some 1, low 2.
+const REVIEW_QUESTIONS = [
+  { id: 'connected', q: 'Do you feel connected to your team?', opts: [['good', 'Yes'], ['some', 'Somewhat'], ['low', 'Not really']] },
+  { id: 'confident', q: 'Do you feel confident in your role?', opts: [['good', 'Yes'], ['some', 'Somewhat'], ['low', 'Not really']] },
+  { id: 'settled', q: 'Do you feel you belong here?', opts: [['good', 'Yes'], ['some', 'Somewhat'], ['low', 'Not really']] },
+  { id: 'help', q: 'Is there anything you need help with?', opts: [['good', 'No, I am fine'], ['some', 'A little'], ['low', 'Yes, I need help']] },
+];

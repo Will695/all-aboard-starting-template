@@ -1,0 +1,14 @@
+{
+  "name": "New Starter Journey",
+  "short_name": "New Starter",
+  "description": "Your joining journey at Lloyds Banking Group, from offer to Day 90.",
+  "start_url": "index.html#/home",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#002a1e",
+  "theme_color": "#002a1e",
+  "icons": [
+    { "src": "brand/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "brand/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

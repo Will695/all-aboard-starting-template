@@ -27,6 +27,7 @@
     people: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.4 3.3-5.5 6.5-5.5s5.9 2.1 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M18 14.6c2 .8 3.2 2.7 3.5 5.4"/>',
     inbox: '<path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1 2h6l1-2h5"/>',
     bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+    list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
     logout: '<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 8l-4 4 4 4M6 12h11"/>',
   };
   const svg = (name) =>
@@ -49,7 +50,11 @@
     const sh = SHARED.get(h.id); // vetting, family and device choice are shared with the employee app
     const family = sh.family !== undefined ? sh.family : (s.family !== undefined ? s.family : h.family);
     const device = sh.device || null;
-    const onb = sh.onb || h.onboarding || { status: 'idle', done: [] };
+    const rawOnb = sh.onb || h.onboarding || { status: 'idle', done: [] };
+    // Sample data may record a finished run without its step list, so fill it in
+    const onb = Object.assign({}, rawOnb, {
+      done: rawOnb.done || (rawOnb.status === 'complete' ? ONBOARDING_STEPS.map((s) => s.key) : []),
+    });
     const requests = (h.requests || []).concat(s.extraReqs || []).map((r) => ({
       ...r,
       status: (s.reqs && s.reqs[r.id]) || r.status,
@@ -67,6 +72,7 @@
       contractSigned: !!sh.contractSigned,
       cancel: sh.cancel || null,
       checkins: sh.checkins || [],
+      startDate: effectiveStart(h.id), // moved by the manager, if it has been
       readyNotified: !!sh.readyNotified,
       homeOrder: sh.homeOrder || null,
       onb,
@@ -122,11 +128,12 @@
     const open = HIRES.map(view).reduce((a, v) => a + v.openReqs.length + v.unread, 0);
     const items = [
       ['', 'New hires', 'people'],
+      ['todo', 'To do', 'list', managerTodos().filter((t) => t.tone !== 'green').length],
       ['alerts', 'Alerts', 'bell', NOTIFY.unread('manager')],
       ['requests', 'Calls and messages', 'inbox', open],
     ];
     const navHtml = (cls) => items.map(([key, label, icon, count]) => {
-      const active = (key === '' && section !== 'requests') || key === section ? 'active' : '';
+      const active = key === (section || '') ? 'active' : '';
       const badge = count ? `<span class="nav-count">${count}</span>` : '';
       return `<a href="#/${key}" class="${active}">${svg(icon)}<span>${label}</span>${badge}</a>`;
     }).join('');
@@ -189,7 +196,7 @@
           ${v.openReqs.length ? `<span class="pill red">${svg('phone').replace('<svg', '<svg class="ico"')} ${plural(v.openReqs.length, 'call request')}</span>` : ''}
           ${v.unread ? `<span class="pill amber">${svg('chat').replace('<svg', '<svg class="ico"')} ${plural(v.unread, 'new message')}</span>` : ''}
           ${v.devRequested ? '<span class="pill amber">Developer build to approve</span>' : ''}
-          ${v.homeOrder && v.homeOrder.overBy > 0 && !v.homeOrder.approved ? '<span class="pill amber">Home kit to approve</span>' : ''}
+          ${v.homeOrder && v.homeOrder.overBy > 0 && !v.homeOrder.approved && !v.homeOrder.denied ? '<span class="pill amber">Home kit to approve</span>' : ''}
           ${v.cancel && v.cancel.status === 'open' ? '<span class="pill red">Cancellation in progress</span>' : ''}
           ${v.cancel && v.cancel.status === 'reversed' ? '<span class="pill grey">Role cancelled</span>' : ''}
           ${!v.cancel && v.readyNotified ? '<span class="pill green">Ready for Day 1</span>' : ''}
@@ -200,6 +207,7 @@
   }
 
   function renderDashboard() {
+    HIRES.forEach((h) => { checkRisk(h.id); checkMonthly(h.id); }); // early support and monthly reminders are checked each time the portal is opened
     const vs = HIRES.map(view).sort((a, b) => a.startDate - b.startDate);
     const ready = vs.filter((v) => v.vettingComplete && v.onb.status === 'idle').length;
     const calls = vs.reduce((a, v) => a + v.openReqs.length, 0);
@@ -210,6 +218,17 @@
         <h1>Your new hires</h1>
         <p class="muted">Follow each starter from offer to Day 1. Anything that needs you is flagged on the card.</p>
       </div>
+
+      <div style="margin-top:16px">${awayCard()}</div>
+
+      ${(() => {
+        const todos = managerTodos();
+        if (!todos.length) return '';
+        return `<div class="card" style="margin-top:16px">
+          <div class="spread"><h2>Your to-do list</h2><a href="#/todo" class="small">See all ${todos.length}</a></div>
+          <div style="margin-top:8px">${todos.slice(0, 5).map(todoRow).join('')}</div>
+        </div>`;
+      })()}
 
       <div class="stats" style="margin-top:16px">
         ${tile(vs.length, 'New hires')}
@@ -246,7 +265,7 @@
           <div class="name"><span class="rag rag-${v.contractSigned ? 'green' : 'amber'}"></span>Employment contract</div>
           <span class="pill ${v.contractSigned ? 'green' : 'grey'}">${v.contractSigned ? 'Signed' : 'Awaiting signature'}</span>
         </div>
-        <div class="check-meta" style="padding-left:22px"><span>Opens one week before the start date</span></div>
+        <div class="check-meta" style="padding-left:22px"><span>Available for the hire to sign at any time</span></div>
       </div>`;
     // Once vetting is cleared (by the override or the checks themselves), every check shows as complete
     const checks = v.vettingComplete ? v.vetting.map((c) => Object.assign({}, c, { status: 'complete' })) : v.vetting;
@@ -417,6 +436,79 @@
       <button class="btn btn-ghost btn-block" style="margin-top:12px" data-cancel-start="${v.id}">Role no longer available</button>`;
   }
 
+  function dateValue(d) {
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+
+  // Start date: moving it updates the hire's dates and tells them, their buddy and onboarding
+  function startCard(v) {
+    const first = v.name.split(' ')[0];
+    const sh = SHARED.get(v.id);
+    const flags = [sh.oneToOne ? 'the Week 1 one-to-one' : '', sh.goalMeeting ? 'the goal-setting check-in' : ''].filter(Boolean);
+    return `
+      <div class="spread"><h2>Start date</h2><span class="pill grey">${fmtShort(v.startDate)}</span></div>
+      <p class="small muted" style="margin-top:6px">Moving the date updates the contract window, delivery dates and Day 1 plan, and tells ${esc(first)}, their buddy and onboarding.${flags.length ? ' ' + esc(flags.join(' and ')) + ' stay booked, so re-confirm them.' : ''}</p>
+      <label class="field-label" for="new-start-${v.id}" style="margin-top:10px">New start date</label>
+      <input class="field" type="date" id="new-start-${v.id}" value="${dateValue(v.startDate)}" />
+      <button class="btn btn-ghost btn-block" style="margin-top:10px" data-move-start="${v.id}">Move start date</button>`;
+  }
+
+  // ID badge and welcome pack
+  function packCard(v) {
+    const sh = SHARED.get(v.id);
+    const badge = sh.badge;
+    const badgeLine = !badge ? '<span class="pill grey">Not requested</span>'
+      : badge.status === 'requested' ? '<span class="pill amber">Requested</span>' : '<span class="pill green">Issued</span>';
+    const buttons = !badge ? `<button class="btn btn-sm" data-badge-request="${v.id}">Request ID badge</button>`
+      : badge.status === 'requested' ? `<button class="btn btn-sm" data-badge-issue="${v.id}">Mark badge issued</button>` : '';
+    const pack = sh.goals && sh.goals.items ? '<span class="pill green">Sent, goals set</span>' : '<span class="pill grey">Opens when goals are set</span>';
+    return `
+      <div class="spread"><h2>Badge and welcome pack</h2></div>
+      <div class="info-list" style="margin-top:10px">
+        <div class="info-row"><span class="muted small">ID badge</span><span>${badgeLine}</span></div>
+        <div class="info-row"><span class="muted small">Welcome pack</span><span>${pack}</span></div>
+      </div>
+      <div style="margin-top:10px">${buttons}</div>`;
+  }
+
+  // Wellbeing and the Day 30 check-in, with the support plan when one exists
+  function riskCard(v) {
+    const sh = SHARED.get(v.id);
+    const level = sh.riskLevel || 'green';
+    const reasons = sh.riskReasons || [];
+    const plan = sh.supportPlan;
+    const pill = level === 'red' ? ['Support now', 'red'] : level === 'amber' ? ['Early support', 'amber'] : ['On track', 'green'];
+    const rv = sh.review;
+    return `
+      <div class="spread"><h2>Wellbeing and Day 30</h2><span class="pill ${pill[1]}">${pill[0]}</span></div>
+      <p class="small muted" style="margin-top:6px">${reasons.length ? esc(reasons.join('. ')) + '.' : 'Nothing needs attention right now. Day 20 and the Day 30 check-in are watched automatically.'}</p>
+      ${rv ? `<div class="info-row" style="margin-top:10px"><span class="muted small">Day 30 check-in</span><span class="pill ${rv.tone === 'red' ? 'red' : rv.tone === 'amber' ? 'amber' : 'green'}">${rv.tone === 'red' ? 'Red' : rv.tone === 'amber' ? 'Amber' : 'Green'}</span></div>` : ''}
+      ${plan ? `<strong style="display:block;margin-top:12px">Support plan</strong><ul class="tips" style="margin-top:6px">${plan.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}`;
+  }
+
+  // Out of office and cover, shown on the dashboard
+  function awayCard() {
+    const a = managerAway();
+    if (a.away) {
+      return `<div class="banner info">${svg('people')}<div><strong>You are out of office${a.until ? ' until ' + fmtShort(new Date(a.until)) : ''}</strong>
+        <div class="small" style="margin-top:4px">Cover: ${esc(a.cover || 'not set')}. Alerts raised while you are away are tagged for cover.</div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:8px" data-ooo-back="1">I am back</button></div></div>`;
+    }
+    const others = DEMO.team.filter((m) => m.name !== MANAGER_ME.name);
+    return `
+      <div class="card">
+        <div class="spread"><h2>Out of office</h2></div>
+        <p class="small muted" style="margin-top:4px">Set a cover person for when you are away. Alerts raised while you are out are tagged for them.</p>
+        <div class="row" style="margin-top:10px;gap:12px;align-items:flex-end">
+          <div style="flex:1;min-width:160px"><label class="field-label" for="ooo-until">Back on</label><input class="field" type="date" id="ooo-until" value="${dateValue(new Date(2026, 10, 16))}" /></div>
+          <div style="flex:1;min-width:160px"><label class="field-label" for="ooo-cover">Cover</label>
+            <select class="field" id="ooo-cover">${others.map((m) => `<option>${esc(m.name)}</option>`).join('')}</select></div>
+          <button class="btn btn-sm" data-ooo-set="1">Set out of office</button>
+        </div>
+      </div>`;
+  }
+
   // Latest weekly check-in, with the traffic light and anything the hire asked for
   function checkinCard(v) {
     const list = (SHARED.get(v.id).checkins || []);
@@ -424,7 +516,7 @@
     if (!list.length) {
       return `<div class="spread"><h2>Weekly check-in</h2><span class="pill grey">None yet</span></div>
         <p class="small muted" style="margin-top:8px">${esc(first)}'s weekly check-in opens on Day 1.</p>
-        <div style="margin-top:12px">${moodSvg([])}</div>`;
+        <button class="btn btn-ghost btn-sm" style="margin-top:10px" data-sample-checkins="${v.id}">Demo: add sample weeks</button>`;
     }
     const c = list[list.length - 1];
     const moodLabel = MOOD_OPTIONS.find((m) => m.id === c.mood).label;
@@ -442,7 +534,39 @@
         ${c.note ? `<div class="info-row"><span class="muted small">Note</span><span>${esc(c.note)}</span></div>` : ''}
       </div>
       <p class="small muted" style="margin-top:8px">${list.length} check-in${list.length === 1 ? '' : 's'} so far.</p>
-      <div style="margin-top:12px">${moodSvg(list)}</div>`;
+      <div style="margin-top:10px">${moodStrip(list)}</div>`;
+  }
+
+  // Day 30 to 90: monthly one-to-one, the hire's Workday and HR checks, and the teething issues check-in
+  function after30Card(v) {
+    const sh = SHARED.get(v.id);
+    const first = v.name.split(' ')[0];
+    const p = monthPeriod(v.id);
+    if (!p) {
+      return `<div class="spread"><h2>Day 30 to 90</h2><span class="pill grey">From Day 30</span></div>
+        <p class="small muted" style="margin-top:8px">Monthly one-to-ones, system checks and the teething issues check-in start after ${esc(first)}'s first 30 days.</p>`;
+    }
+    const m2 = sh.m2 || {};
+    const m3 = sh.m3;
+    const sysPill = (state) => state === 'ok' ? '<span class="pill green">Can get in</span>'
+      : state === 'problem' ? '<span class="pill red">Needs help</span>' : '<span class="pill grey">Not checked yet</span>';
+    const booked = (sh.monthly || {})[p];
+    return `
+      <div class="spread"><h2>Day 30 to 90</h2><span class="pill grey">Day ${p * 30} to ${(p + 1) * 30}</span></div>
+      <div style="margin-top:12px"><strong>Monthly one-to-one</strong></div>
+      <div style="margin-top:6px">${booked
+        ? `<span class="pill green">Booked ${fmtShort(new Date(booked))}</span>`
+        : `<p class="small muted">Book this month's one-to-one. ${esc(first)} is told straight away.</p>
+           <button class="btn btn-sm" style="margin-top:10px" data-book-monthly="${v.id}">Book monthly one-to-one</button>`}</div>
+      <div class="info-list" style="margin-top:12px">
+        <div class="info-row"><span class="muted small">Workday</span><span>${sysPill(m2.workday)}</span></div>
+        <div class="info-row"><span class="muted small">HR</span><span>${sysPill(m2.hr)}</span></div>
+        <div class="info-row"><span class="muted small">Teething issues (Day 60 to 90)</span><span>${m3
+          ? `<span class="pill ${m3.tone === 'red' ? 'red' : m3.tone === 'amber' ? 'amber' : 'green'}">${m3.tone === 'red' ? 'Something to raise' : m3.tone === 'amber' ? 'A few issues' : 'None'}</span>`
+          : '<span class="pill grey">Not answered yet</span>'}</span></div>
+        ${m3 && m3.raiseNote ? `<div class="info-row"><span class="muted small">Wants to raise</span><span>${esc(m3.raiseNote)}</span></div>` : ''}
+        ${m3 && m3.issuesNote ? `<div class="info-row"><span class="muted small">Issues</span><span>${esc(m3.issuesNote)}</span></div>` : ''}
+      </div>`;
   }
 
   // First 30 days progress as seen by the manager (the hire does the tasks, the manager books the 1-1)
@@ -479,7 +603,7 @@
 
   function homeKitCard(v) {
     if (!v.contractSigned) {
-      return `<h2>Home equipment</h2><p class="small muted" style="margin-top:8px">Opens once the contract is signed, one week before the start date.</p>`;
+      return `<h2>Home equipment</h2><p class="small muted" style="margin-top:8px">Opens once the contract is signed.</p>`;
     }
     const o = v.homeOrder;
     if (!o) {
@@ -487,22 +611,27 @@
         <p class="small muted" style="margin-top:8px">${esc(v.name.split(' ')[0])} has signed and can now order a monitor, desk, chair and cables.</p>`;
     }
     const delivery = HOME_DELIVERY.find((d) => d.id === o.delivery);
-    const needsApproval = o.overBy > 0 && !o.approved;
+    const denied = !!o.denied;
+    const needsApproval = o.overBy > 0 && !o.approved && !denied;
     const lines = Object.keys(o.items).map((id) => {
       const k = HOME_KIT.find((x) => x.id === id);
       return `<div class="info-row"><span>${o.items[id]} × ${esc(k.name)}</span><span>${money(k.price * o.items[id])}</span></div>`;
     }).join('');
     return `
       <div class="spread"><h2>Home equipment</h2>
-        <span class="pill ${needsApproval ? 'amber' : 'green'}">${needsApproval ? 'Needs your approval' : 'Ordered'}</span></div>
+        <span class="pill ${denied ? 'red' : needsApproval ? 'amber' : 'green'}">${denied ? 'Denied' : needsApproval ? 'Needs your approval' : 'Ordered'}</span></div>
       <div class="info-list" style="margin-top:8px">
         ${lines}
         <div class="info-row"><strong>Total</strong><strong>${money(o.total)} <span class="small muted">of ${money(HOME_KIT_ALLOWANCE)} allowance</span></strong></div>
-        <div class="info-row"><span class="muted small">Delivery</span><span>${esc(delivery.label)}, ${esc(delivery.note)}</span></div>
+        <div class="info-row"><span class="muted small">Delivery</span><span>${esc(delivery.label)}, ${esc(deliveryNote(delivery, v.id))}</span></div>
       </div>
       ${needsApproval ? `
         <div class="banner warn" style="margin-top:12px"><div>${money(o.overBy)} is over the allowance. Approve it to place the order.</div></div>
-        <div class="row" style="margin-top:12px"><button class="btn btn-sm" data-kit-approve="${v.id}">Approve ${money(o.overBy)} over allowance</button></div>` : ''}`;
+        <div class="row" style="margin-top:12px">
+          <button class="btn btn-sm" data-kit-approve="${v.id}">Approve ${money(o.overBy)} over allowance</button>
+          <button class="btn btn-ghost btn-sm" data-kit-deny="${v.id}">Deny</button>
+        </div>` : ''}
+      ${denied ? `<div class="banner alert" style="margin-top:12px"><div>You denied the ${money(o.overBy)} over the allowance. ${esc(v.name.split(' ')[0])} has been asked to change the order. Nothing has been ordered.</div></div>` : ''}`;
   }
 
   function deviceCard(v) {
@@ -576,9 +705,12 @@
 
   function renderHire(id) {
     const h = HIRES.find((x) => x.id === id);
+    if (h) { checkRisk(h.id); checkMonthly(h.id); }
     if (!h) return `${crumbs([{ label: 'New hires', href: '#/' }, { label: 'Not found' }])}<p class="muted">We could not find that hire.</p>`;
     // Opening the chat clears its unread badge
     CHAT.markRead(h.id, 'manager');
+    // Back-fill: hires onboarded before the notify step existed still tell their buddy
+    if (((overrides[h.id] && overrides[h.id].onb) || (SHARED.get(h.id).onb || {})).status === 'complete') notifyOnboardingDone(h.id);
     const v = view(h);
     const pct = progressFor(v);
     const stage = HIRE_STAGES[v.stageIndex] || HIRE_STAGES[0];
@@ -609,7 +741,11 @@
           <div class="card">${homeKitCard(v)}</div>
           <div class="card">${cancelCard(v)}</div>
           <div class="card">${first30Card(v)}</div>
+          <div class="card">${after30Card(v)}</div>
           <div class="card">${checkinCard(v)}</div>
+          <div class="card">${riskCard(v)}</div>
+          <div class="card">${startCard(v)}</div>
+          <div class="card">${packCard(v)}</div>
           <div class="card">
             <div class="spread"><h2>Vetting</h2><span class="pill ${vetTone(v)}">${v.vetDone} of ${v.vetTotal} cleared</span></div>
             <div style="margin-top:12px">${vettingList(v)}</div>
@@ -677,7 +813,8 @@
     if (type === 'vetting' || type === 'onboarding' || type === 'contract' || type === 'ready' || type === 'benefits') return 'green';
     if (type === 'withdrawal' || type === 'cancelled') return 'red';
     if (type === 'message' || type === 'access') return 'amber';
-    if (type === 'goals') return 'green';
+    if (type === 'goals' || type === 'badge' || type === 'pack' || type === 'review') return 'green';
+    if (type === 'startdate') return 'amber';
     return 'red'; // call, device, kit: something needs a decision
   }
 
@@ -687,7 +824,7 @@
         <span class="rag rag-${n.tone || alertTone(n.type)}"></span>
         <div class="alert-body">
           <a href="${esc(n.link)}" data-alert="${n.id}" class="alert-title">${esc(n.title)}</a>
-          <div class="small muted">${esc(n.text)} · ${fmtShort(new Date(n.time))}</div>
+          <div class="small muted">${esc(n.text)} · ${fmtShort(new Date(n.time))}${n.cover ? ' · For cover: ' + esc(n.cover) : ''}</div>
         </div>
         ${n.read ? '' : '<span class="pill amber">New</span>'}
       </div>`;
@@ -709,6 +846,108 @@
       <div class="card" style="margin-top:12px">
         ${list.length ? list.map(alertRow).join('') : '<p class="muted">No alerts yet.</p>'}
       </div>`;
+  }
+
+  // ---------- Manager to-do list ----------
+  // Worked out from the state of each hire, so an item disappears as soon as it is done.
+  function managerTodos() {
+    const out = [];
+    HIRES.map(view).forEach((v) => {
+      const sh = SHARED.get(v.id);
+      const first = v.name.split(' ')[0];
+      const add = (tone, text) => out.push({ tone: tone, text: text, name: v.name, hireId: v.id, initials: v.initials, title: v.title, href: '#/hire/' + v.id });
+      const c = v.cancel;
+      if (c && c.status === 'reversed') return; // role cancelled, nothing left to do
+      if (c && c.status === 'open') {
+        if (c.by === 'hire') add('red', 'Reverse set-up and close the role: ' + first + ' has withdrawn');
+        else if (!c.callBooked) add('red', 'Book the call to tell ' + first + ' the role is no longer available');
+        else if (!c.callDone) add('amber', 'Confirm you have spoken to ' + first + ' about the role');
+        else add('red', 'Cancel the role and reverse ' + first + "'s set-up");
+        return;
+      }
+      if ((sh.riskLevel || 'green') !== 'green') add(sh.riskLevel, 'Go through the support plan with ' + first);
+      v.requests.forEach((r) => {
+        if (r.status === 'open') add('red', 'Book a call back with ' + first);
+        if (r.status === 'booked') add('amber', 'Call ' + first + ' (call booked)');
+      });
+      if (v.unread) add('amber', 'Reply to ' + first + ' (' + plural(v.unread, 'new message') + ')');
+      if (v.vettingComplete && v.onb.status === 'idle') add('amber', v.family ? 'Start onboarding for ' + first : 'Set the job family for ' + first);
+      if (v.devRequested) add('amber', 'Approve or decline the developer build for ' + first);
+      if (v.homeOrder && v.homeOrder.overBy > 0 && !v.homeOrder.approved && !v.homeOrder.denied) add('amber', 'Approve or deny the home equipment order for ' + first);
+      // After Day 30: the monthly one-to-one, and anything the hire flagged in their checks
+      const period = monthPeriod(v.id);
+      if (period && !(sh.monthly || {})[period]) add('amber', "Book this month's one-to-one with " + first);
+      const m2 = sh.m2 || {};
+      if (m2.workday === 'problem') add('amber', 'Help ' + first + ' get into Workday');
+      if (m2.hr === 'problem') add('amber', 'Help ' + first + ' get into HR');
+      if (sh.m3 && sh.m3.tone !== 'green') add(sh.m3.tone, sh.m3.raise === 'yes' ? 'Talk to ' + first + ': they have something to raise' : 'Check in with ' + first + ' about their teething issues');
+      if (!sh.oneToOne) add(v.vettingComplete ? 'amber' : 'green', 'Book the Week 1 one-to-one with ' + first);
+      if (!sh.goalMeeting) add(v.vettingComplete ? 'amber' : 'green', 'Book the goal-setting check-in with ' + first);
+      if (!sh.badge) add(v.vettingComplete ? 'amber' : 'green', 'Request the ID badge for ' + first);
+      else if (sh.badge.status === 'requested') add('green', 'Mark the ID badge as issued for ' + first);
+    });
+    const order = { red: 0, amber: 1, green: 2 };
+    return out.sort((a, b) => order[a.tone] - order[b.tone]);
+  }
+
+  function todoRow(t, hideName) {
+    return `
+      <a class="alert-row todo-link" href="${t.href}">
+        <span class="rag rag-${t.tone}"></span>
+        <div class="alert-body"><strong>${esc(t.text)}</strong>${hideName === true ? '' : `<span class="small muted">${esc(t.name)}</span>`}</div>
+        <span class="pill ${t.tone === 'red' ? 'red' : t.tone === 'amber' ? 'amber' : 'green'}">${t.tone === 'red' ? 'Do now' : t.tone === 'amber' ? 'This week' : 'When ready'}</span>
+      </a>`;
+  }
+
+  // Which urgency the to-do page is filtered to: 'all', 'red', 'amber' or 'green'
+  let todoFilter = 'all';
+
+  function renderTodos() {
+    const allTodos = managerTodos();
+    const todos = todoFilter === 'all' ? allTodos : allTodos.filter((t) => t.tone === todoFilter);
+    const countOf = (tone) => allTodos.filter((t) => t.tone === tone).length;
+    const filterBtn = (key, label, tone) => `
+      <button type="button" class="filter-btn ${todoFilter === key ? 'on' : ''}" data-todo-filter="${key}" aria-pressed="${todoFilter === key}">
+        ${tone ? `<i class="rag rag-${tone}"></i>` : ''}${label} <span class="small muted">${key === 'all' ? allTodos.length : countOf(key)}</span>
+      </button>`;
+    // One section per colleague. Colleagues with the most urgent items come first.
+    const ids = [];
+    todos.forEach((t) => { if (!ids.includes(t.hireId)) ids.push(t.hireId); });
+    const byColleague = ids.map((id) => {
+      const items = todos.filter((t) => t.hireId === id);
+      const worst = items[0].tone; // items are already sorted red, amber, green
+      const counts = ['red', 'amber', 'green'].map((tone) => {
+        const n = items.filter((t) => t.tone === tone).length;
+        return n ? `<span class="pill ${tone}">${n} ${tone === 'red' ? 'do now' : tone === 'amber' ? 'this week' : 'when ready'}</span>` : '';
+      }).join('');
+      return `
+        <div class="section-head">
+          <a class="person" href="${items[0].href}" style="text-decoration:none;color:var(--ink)">
+            <span class="avatar">${esc(items[0].initials)}</span>
+            <span class="person-meta"><strong>${esc(items[0].name)}</strong><span>${esc(items[0].title)}</span></span>
+          </a>
+          <span class="row" style="gap:6px;justify-content:flex-end" data-worst="${worst}">${counts}</span>
+        </div>
+        <div class="card">${items.map((t) => todoRow(t, true)).join('')}</div>`;
+    }).join('');
+    return `
+      <div class="stack" style="gap:6px">
+        <p class="eyebrow">To do</p>
+        <h1>Your to-do list</h1>
+        <p class="muted">Everything your new starters need from you. Items clear themselves as soon as they are done.</p>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="filter-row" role="group" aria-label="Filter to-dos by urgency">
+          ${filterBtn('all', 'All')}
+          ${filterBtn('red', 'Do now', 'red')}
+          ${filterBtn('amber', 'This week', 'amber')}
+          ${filterBtn('green', 'When ready', 'green')}
+        </div>
+      </div>
+      ${todos.length ? byColleague
+        : `<div class="card" style="margin-top:16px"><p>${allTodos.length
+            ? 'Nothing in this group. <button class="linkish" data-todo-filter="all">Show all</button>'
+            : '<strong>All done.</strong> Nothing needs you right now.'}</p></div>`}`;
   }
 
   function renderSigninPage() {
@@ -733,6 +972,7 @@
       const o = SHARED.get(h.id).onb;
       if (!o || o.status !== 'running') return;
       const next = ONBOARDING_STEPS.find((st) => !o.done.includes(st.key));
+      if (next && next.key === 'notify') notifyOnboardingDone(h.id); // buddy, team and the new starter
       const done = next ? o.done.concat(next.key) : o.done;
       const finished = done.length === ONBOARDING_STEPS.length;
       SHARED.update(h.id, {
@@ -789,10 +1029,15 @@
     if (section === 'hire' && id) html = renderHire(id);
     else if (section === 'requests') html = renderRequests();
     else if (section === 'alerts') html = renderAlerts();
+    else if (section === 'todo') html = renderTodos();
     else html = renderDashboard();
 
+    // Keep the scroll position when the same page is re-drawn (a button press), and go to the top on a new page
+    const samePage = route.last === raw;
+    const keepY = window.scrollY;
     $('#app').innerHTML = html;
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    window.scrollTo({ top: samePage ? keepY : 0, behavior: 'instant' });
+    route.last = raw;
   }
 
   // ---------- Events ----------
@@ -812,6 +1057,55 @@
     }
     if (el.id === 'start-onb') {
       return startOnboarding(el.dataset.hire);
+    }
+    if (el.dataset.moveStart) {
+      const id = el.dataset.moveStart;
+      const h = HIRES.find((x) => x.id === id);
+      const val = $('#new-start-' + id).value;
+      if (!val) { toast('Pick a new start date first'); return; }
+      const [y, m, d] = val.split('-').map(Number);
+      const next = new Date(y, m - 1, d);
+      if (dateValue(next) === dateValue(effectiveStart(id))) { toast('That is already the start date'); return; }
+      SHARED.update(id, { startDate: next.toISOString(), startMoved: true });
+      NOTIFY.add({ to: 'hire', hireId: id, type: 'startdate', title: 'Your start date has moved',
+        text: 'Your new start date is ' + fmtLong(next) + '. Your contract window and delivery dates have been updated.', link: '#/home' });
+      CHAT.send(id, 'hr', h.name.split(' ')[0] + "'s start date has moved to " + fmtLong(next) + '. Their Day 1 plan has been updated.',
+        'Onboarding team', 'buddy');
+      toast('Start date moved. ' + h.name.split(' ')[0] + ', their buddy and onboarding have been told');
+      return route();
+    }
+    if (el.dataset.badgeRequest || el.dataset.badgeIssue) {
+      const requesting = !!el.dataset.badgeRequest;
+      const id = el.dataset.badgeRequest || el.dataset.badgeIssue;
+      SHARED.update(id, { badge: { status: requesting ? 'requested' : 'issued', at: TODAY.toISOString() } });
+      if (!requesting) NOTIFY.add({ to: 'hire', hireId: id, type: 'badge', title: 'Your ID badge is ready', text: 'Collect it from reception on Day 1.', link: '#/welcome' });
+      toast(requesting ? 'ID badge requested' : 'ID badge marked as issued');
+      return route();
+    }
+    if (el.dataset.oooSet) {
+      const until = $('#ooo-until').value;
+      const cover = $('#ooo-cover').value;
+      const [y, m, d] = until.split('-').map(Number);
+      SHARED.update('_manager', { away: true, until: new Date(y, m - 1, d).toISOString(), cover: cover });
+      toast('Out of office set. Cover: ' + cover);
+      return route();
+    }
+    if (el.dataset.oooBack) {
+      SHARED.update('_manager', { away: false, cover: null, until: null });
+      toast('Welcome back');
+      return route();
+    }
+    if (el.dataset.bookMonthly) {
+      const id = el.dataset.bookMonthly;
+      const h = HIRES.find((x) => x.id === id);
+      const p = monthPeriod(id);
+      const start = effectiveStart(id);
+      const when = new Date(start.getFullYear(), start.getMonth(), start.getDate() + (p * 30) + 7, 10, 0); // a week into the month
+      SHARED.update(id, { monthly: Object.assign({}, SHARED.get(id).monthly, { [p]: when.toISOString() }) });
+      NOTIFY.add({ to: 'hire', hireId: id, type: 'monthly', title: 'Monthly one-to-one booked with ' + MANAGER_ME.name,
+        text: fmtLong(when) + ', 10:00, on Teams.', link: '#/next' });
+      toast(h.name.split(' ')[0] + ' has been told about the monthly one-to-one');
+      return route();
     }
     if (el.dataset.bookGoals) {
       const id = el.dataset.bookGoals;
@@ -882,6 +1176,30 @@
     if (el.id === 'alerts-read') {
       NOTIFY.markAll('manager');
       toast('All alerts marked as read');
+      return route();
+    }
+    if (el.dataset.todoFilter) {
+      todoFilter = el.dataset.todoFilter;
+      return route();
+    }
+    if (el.dataset.sampleCheckins) {
+      const sample = [
+        { week: 1, mood: 'good', find: 'no', raise: 'none', note: '', tone: 'green' },
+        { week: 2, mood: 'okay', find: 'yes', raise: 'buddy', note: '', tone: 'amber' },
+        { week: 3, mood: 'poor', find: 'no', raise: 'manager', note: 'Feeling the workload', tone: 'red' },
+        { week: 4, mood: 'good', find: 'no', raise: 'none', note: '', tone: 'green' },
+      ].map((c) => Object.assign({}, c, { at: TODAY.toISOString() }));
+      SHARED.update(el.dataset.sampleCheckins, { checkins: sample });
+      toast('Sample check-in weeks added');
+      return route();
+    }
+    if (el.dataset.kitDeny) {
+      const id = el.dataset.kitDeny;
+      const cur = SHARED.get(id).homeOrder;
+      SHARED.update(id, { homeOrder: Object.assign({}, cur, { denied: true, deniedOn: TODAY.toISOString() }) });
+      NOTIFY.add({ to: 'hire', hireId: id, type: 'kit', title: 'Your home equipment order was not approved',
+        text: 'It is ' + money(cur.overBy) + ' over the ' + money(HOME_KIT_ALLOWANCE) + ' allowance. Change your order to bring it within the allowance.', link: '#/workspace' });
+      toast('Order denied. The new starter has been asked to change it');
       return route();
     }
     if (el.dataset.kitApprove) {

@@ -31,23 +31,45 @@
   }
 
   // ---------- Controls in the top bar ----------
+  // One "Accessibility" button in the top bar opens a panel with the display options
   function buildControls() {
     var top = document.querySelector('.topbar');
-    if (!top || document.getElementById('a11y-theme')) return;
-    var box = document.createElement('div');
-    box.className = 'a11y-controls';
-    box.setAttribute('role', 'group');
-    box.setAttribute('aria-label', 'Display settings');
-    box.innerHTML =
-      '<button type="button" id="a11y-theme" aria-pressed="false" title="Dark mode">Dark mode</button>' +
-      '<button type="button" data-scale="down" aria-label="Smaller text" title="Smaller text">A−</button>' +
-      '<button type="button" data-scale="reset" aria-label="Normal text size" title="Normal text size">A</button>' +
-      '<button type="button" data-scale="up" aria-label="Larger text" title="Larger text">A+</button>';
-    top.appendChild(box);
+    if (!top || document.getElementById('a11y-open')) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'a11y-wrap';
+    wrap.innerHTML =
+      '<button type="button" id="a11y-open" class="a11y-open" aria-expanded="false" aria-controls="a11y-panel">Accessibility</button>' +
+      '<div class="a11y-panel" id="a11y-panel" hidden role="group" aria-label="Accessibility settings">' +
+        '<p class="a11y-title">Display</p>' +
+        '<div class="a11y-controls">' +
+          '<button type="button" id="a11y-theme" aria-pressed="false">Dark mode</button>' +
+          '<button type="button" data-scale="down" aria-label="Smaller text">A−</button>' +
+          '<button type="button" data-scale="reset" aria-label="Normal text size">A</button>' +
+          '<button type="button" data-scale="up" aria-label="Larger text">A+</button>' +
+        '</div>' +
+        '<p class="small muted">Dark mode and text size are remembered on this device.</p>' +
+      '</div>';
+    top.appendChild(wrap);
     applyPrefs();
   }
 
+  function setPanel(open) {
+    var btn = document.getElementById('a11y-open');
+    var panel = document.getElementById('a11y-panel');
+    if (!btn || !panel) return;
+    panel.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) { var first = document.getElementById('a11y-theme'); if (first) first.focus(); }
+  }
+
   document.addEventListener('click', function (ev) {
+    if (ev.target.closest('#a11y-open')) {
+      var panelOpen = document.getElementById('a11y-panel') && !document.getElementById('a11y-panel').hidden;
+      setPanel(!panelOpen);
+      return;
+    }
+    var wrapEl = document.querySelector('.a11y-wrap');
+    if (wrapEl && !wrapEl.contains(ev.target)) setPanel(false);
     var btn = ev.target.closest('.a11y-controls button');
     if (!btn) return;
     var p = prefs();
@@ -62,6 +84,13 @@
     }
     savePrefs(p);
     applyPrefs();
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') {
+      var panel = document.getElementById('a11y-panel');
+      if (panel && !panel.hidden) { setPanel(false); document.getElementById('a11y-open').focus(); }
+    }
   });
 
   // Follow the system setting when the user has not chosen one

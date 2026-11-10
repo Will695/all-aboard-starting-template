@@ -128,8 +128,8 @@
       ['first30', 'First 30 days', 'calendar'],
       ['team', 'My team', 'people'],
       ['me', 'My details', 'user'],
-    ];
-    const current = route === 'home' ? 'home' : route;
+    ].filter((it) => !(combinedMode() && it[0] === 'first30')); // once combined, To do holds the plan too
+    const current = route === 'home' ? 'home' : (combinedMode() && route === 'first30' ? 'todo' : route);
     $('#sidenav').innerHTML =
       items.map(([r, label, icon]) =>
         `<a href="#/${r}" class="${current === r ? 'active' : ''}">${svg(icon)}${label}</a>`).join('') +
@@ -232,6 +232,7 @@
       ${cancelBanner()}
       ${updatesBanner()}
       ${weeklyBanner()}
+      ${phaseBanner()}
       <div class="hero">
         <div class="stack">
           <div class="hero-title">
@@ -239,9 +240,9 @@
             <h1>Good morning, ${esc(person.firstName)}</h1>
             <p class="muted">You are joining as a ${esc(person.title)} in ${esc(person.team)}. Here is where things stand.</p>
           </div>
-          <div class="card">
+          <div class="card" data-tour="journey">
             <div class="countdown">
-              <div class="tile"><strong>${daysToStart}</strong><span>days to Day 1</span></div>
+              <div class="tile"><strong>${daysBetween(TODAY, person.startDate)}</strong><span>days to Day 1</span></div>
               <div class="tile" style="background:var(--card);border:1px solid var(--line)"><strong style="font-size:1.1rem">${fmtLong(person.startDate)}</strong><span>${esc(person.startTime)} · ${esc(person.startPlace)}</span></div>
             </div>
             <div style="margin-top:18px" class="stack">
@@ -280,13 +281,20 @@
               <span class="muted small">Agreed salary</span>
               <strong>${money(person.salary)} <span class="small muted">${esc(person.salaryBasis)}</span></strong>
             </div>
+            <div class="salary-line" style="border-top:0;padding-top:0;margin-top:0">
+              <span class="muted small">Pay day</span>
+              <strong style="font-size:1rem">20th of each month</strong>
+            </div>
             <a class="btn btn-ghost btn-sm" href="#/place" style="align-self:flex-start">Travel and local area ${svg('arrow')}</a>
           </div>
         </div>
       </div>
 
+      ${notifyCard(true)}
+      ${startMovedBanner()}
+      ${unlockPanel()}
       <div class="section-head"><h2>Your to-dos</h2><a href="#/todo">See all ${openTodos.length} open</a></div>
-      <div class="card">
+      <div class="card" data-tour="todos">
         ${renderTodoList(openTodos.slice(0, 4))}
       </div>
 
@@ -308,7 +316,7 @@
       </div>
 
       <div class="grid two" style="margin-top:16px">
-        <div class="card">
+        <div class="card" data-tour="people">
           <h2>Your manager</h2>
           <div class="person" style="margin-top:14px">
             <span class="avatar lg">${initials(manager.name)}</span>
@@ -326,12 +334,14 @@
             <span class="avatar lg">${initials(buddy.name)}</span>
             <div class="person-meta"><strong>${esc(buddy.name)}</strong><span>${esc(buddy.role)}</span></div>
           </div>
+          ${buddyProfile()}
           <p class="small muted" style="margin-top:12px">Your buddy answers the small questions no handbook covers: where to get a coffee, how the Teams calls work, what to wear.</p>
+          <a class="btn btn-ghost btn-sm" style="margin-top:12px" href="#/buddy">${svg('chat')} Message ${esc(buddy.name.split(' ')[0])}${chatBadge('buddy')}</a>
         </div>
       </div>
 
       <p class="small muted" style="margin-top:24px;text-align:center">
-        <a href="manager.html">Manager portal (demo)</a> · <a href="buddy.html">Buddy portal (demo)</a> · <a href="#/reset">Reset demo</a>
+        <button class="linkish" data-tour-start="1">Take the tour</button> · <a href="manager.html">Manager portal (demo)</a> · <a href="buddy.html">Buddy portal (demo)</a> · <a href="#/reset">Reset demo</a>
       </p>`;
   }
 
@@ -383,6 +393,7 @@
   }
 
   function renderTodo() {
+    if (combinedMode()) return renderFirst30(); // one combined list after onboarding and Day 1
     const d = state.doneTodos;
     const action = DEMO.todos.filter((t) => !d.includes(t.id) && t.rag === 'red');
     const soon = DEMO.todos.filter((t) => !d.includes(t.id) && t.rag === 'amber');
@@ -483,7 +494,7 @@
       </div>`;
   }
 
-  // The contract is one of the checks. It opens one week before the start date and is signed here.
+  // The contract is one of the checks. It can be signed at any time, on the Home workspace page.
   function contractCheckRow() {
     const sh = SHARED.get(CHAT.ME_HIRE_ID);
     const signed = !!sh.contractSigned;
@@ -524,6 +535,19 @@
   }
 
   const money = (n) => '£' + n.toLocaleString('en-GB');
+
+  // Buddy bio, years of service and skills, shown on the Home and My team buddy cards
+  function buddyProfile() {
+    return `
+      <div class="row small" style="margin-top:12px;gap:8px">
+        <span class="pill">${buddy.yearsService} years at the bank</span>
+      </div>
+      <p class="small" style="margin-top:10px">${esc(buddy.bio)}</p>
+      <div class="small muted" style="margin-top:10px">Good to ask about</div>
+      <div class="row" style="margin-top:6px;gap:6px">
+        ${buddy.skills.map((s) => `<span class="pill grey">${esc(s)}</span>`).join('')}
+      </div>`;
+  }
 
   // Small unread count shown on the Message button
   function chatBadge(channel) {
@@ -589,7 +613,7 @@
           ])}
         </div>
         <p class="small muted" style="margin-top:12px">Figures shown are illustrative for the demo. Final figures come from your offer letter and payroll.</p>
-        ${moodCard()}
+        ${notifyCard(false)}
         <div class="card" style="margin-top:16px">
           <div class="spread"><h2>How you fit in</h2></div>
           <p class="small muted" style="margin-top:6px">What the bank needs, from the top down to your part, and why it matters.</p>
@@ -765,7 +789,7 @@
   // Contract opens CONTRACT_LEAD_DAYS before the start date (or from the demo button)
   function contractWindowOpen(sh) {
     const opensOn = new Date(person.startDate.getTime() - CONTRACT_LEAD_DAYS * 86400000);
-    return TODAY >= opensOn || !!sh.demoWindow;
+    return true; // the contract can be signed as soon as it is available
   }
 
   function renderWorkspace() {
@@ -815,12 +839,14 @@
       kitBody = `
         <div class="info-list">${lines}
           <div class="info-row"><strong>Total</strong><strong>${money(order.total)}</strong></div>
-          <div class="info-row"><span class="muted small">Delivery</span><span>${esc(delivery.label)}, ${esc(delivery.note)}</span></div>
+          <div class="info-row"><span class="muted small">Delivery</span><span>${esc(delivery.label)}, ${esc(deliveryNote(delivery))}</span></div>
           <div class="info-row"><span class="muted small">Deliver to</span><span>${person.address.map(esc).join(', ')}</span></div>
         </div>
-        ${order.overBy > 0 && !order.approved
+        ${order.denied
+          ? `<div class="banner alert" style="margin-top:12px">${svg('shield')}<div><strong>${esc(manager.name)} did not approve this order</strong><div class="small" style="margin-top:4px">It is ${money(order.overBy)} over your ${money(HOME_KIT_ALLOWANCE)} allowance. Nothing has been ordered. Change your order to bring it within the allowance.</div></div></div>`
+          : order.overBy > 0 && !order.approved
           ? `<div class="banner warn" style="margin-top:12px">${svg('check')}<div>${money(order.overBy)} is over your ${money(HOME_KIT_ALLOWANCE)} allowance. Jordan needs to approve it before we order.</div></div>`
-          : `<div class="banner info" style="margin-top:12px">${svg('check')}<div>Order placed. Delivery is booked for ${esc(delivery.note)}.</div></div>`}
+          : `<div class="banner info" style="margin-top:12px">${svg('check')}<div>Order placed. Delivery is booked for ${esc(deliveryNote(delivery))}.</div></div>`}
         <button class="btn btn-ghost btn-sm" style="margin-top:12px" data-edit-kit="1">Change order</button>`;
     } else {
       const total = HOME_KIT.reduce((a, k) => a + k.price * (draft.items[k.id] || 0), 0);
@@ -851,7 +877,7 @@
           ${HOME_DELIVERY.map((d) => `
             <label class="delivery ${draft.delivery === d.id ? 'on' : ''}">
               <input type="radio" name="delivery" value="${d.id}" ${draft.delivery === d.id ? 'checked' : ''} />
-              <span><strong>${esc(d.label)}</strong><span class="small muted">${esc(d.note)}</span></span>
+              <span><strong>${esc(d.label)}</strong><span class="small muted">${esc(deliveryNote(d))}</span></span>
             </label>`).join('')}
         </div>
 
@@ -874,7 +900,7 @@
       <div class="grid two" style="margin-top:16px">
         <div class="stack">${contractCard}</div>
         <div class="card stack">
-          <div class="spread"><h2>Home equipment</h2>${signed ? (order ? '<span class="pill green">Ordered</span>' : '<span class="pill grey">Not ordered</span>') : '<span class="pill grey">Locked</span>'}</div>
+          <div class="spread"><h2>Home equipment</h2>${signed ? (order ? (order.denied ? '<span class="pill red">Not approved</span>' : '<span class="pill green">Ordered</span>') : '<span class="pill grey">Not ordered</span>') : '<span class="pill grey">Locked</span>'}</div>
           ${kitBody}
         </div>
       </div>`;
@@ -994,7 +1020,7 @@
 
   // Tasks unlock on Day 1. Before then the pages can be read, and a demo button opens them early.
   function day1Open(sh) {
-    return TODAY >= person.startDate || !!sh.demoDay1;
+    return TODAY >= person.startDate || !!sh.demoDay1 || daysIn(CHAT.ME_HIRE_ID) >= 0;
   }
 
   function gateBanner(sh) {
@@ -1052,15 +1078,24 @@
         </div>`;
     };
 
+    // After onboarding and Day 1, the to-do list and this plan are one page. Finished items are tidied away.
+    const combined = combinedMode();
+    const openTodos = DEMO.todos.filter((t) => !state.doneTodos.includes(t.id));
+    const planLeft = FIRST30_PLAN.filter((i) => !first30Done(sh, i));
+    const tidied = doneCount + (DEMO.todos.length - openTodos.length);
+
     return `
-      ${breadcrumbs([{ label: 'Home', href: '#/home' }, { label: 'First 30 days' }])}
+      ${breadcrumbs([{ label: 'Home', href: '#/home' }, { label: combined ? 'To do' : 'First 30 days' }])}
 
       <div class="stack" style="gap:6px;margin-top:10px">
-        <p class="eyebrow">Day 1 to Day 30</p>
-        <h1>Your first 30 days</h1>
-        <p class="muted">Everything for your first month in one place: the training you need, your first one-to-one, team intros, benefits and community pages.</p>
+        <p class="eyebrow">${combined ? 'To do' : 'Day 1 to Day 30'}</p>
+        <h1>${combined ? 'What is left to do' : 'Your first 30 days'}</h1>
+        <p class="muted">${combined
+          ? 'Your to-dos and your first 30 days plan, in one list. Finished items are tidied away.'
+          : 'Everything for your first month in one place: the training you need, your first one-to-one, team intros, benefits and community pages.'}</p>
       </div>
       ${gateBanner(sh)}
+      ${combined ? `<p class="small muted" style="margin-top:12px">${tidied} finished item${tidied === 1 ? '' : 's'} tidied away. ${openTodos.length + planLeft.length} left.</p>` : ''}
 
       <div class="card" style="margin-top:16px">
         <div class="spread small"><span><strong>${doneCount} of ${FIRST30_PLAN.length}</strong> done</span><span>${pct}%</span></div>
@@ -1077,9 +1112,25 @@
           </div>`).join('') : '<p class="muted">Nothing yet. Your manager will let you know about your first one-to-one here.</p>'}
       </div>
 
-      ${windows.map((w) => `
-        <div class="section-head"><h2>${esc(w)}</h2></div>
-        <div class="card">${FIRST30_PLAN.filter((i) => i.window === w).map(itemHtml).join('')}</div>`).join('')}`;
+      ${combined && openTodos.length ? `
+        <div class="section-head"><h2>Still to do from before Day 1</h2></div>
+        <div class="card">${renderTodoList(openTodos)}</div>` : ''}
+
+      ${windows.map((w) => {
+        const items = FIRST30_PLAN.filter((i) => i.window === w && (!combined || !first30Done(sh, i)));
+        if (combined && !items.length) return '';
+        return `
+          <div class="section-head"><h2>${esc(w)}</h2></div>
+          <div class="card">${items.map(itemHtml).join('')}</div>`;
+      }).join('')}
+
+      ${combined && !openTodos.length && !planLeft.length ? '<div class="card" style="margin-top:16px"><p><strong>All done.</strong> Nothing is left on your list.</p></div>' : ''}`;
+  }
+
+  // Once onboarding has finished and Day 1 has arrived, To do and First 30 days are one list
+  function combinedMode() {
+    const sh = SHARED.get(CHAT.ME_HIRE_ID);
+    return !!sh.onb && sh.onb.status === 'complete' && day1Open(sh);
   }
 
   function renderLearn() {
@@ -1234,6 +1285,281 @@
           </div>`).join('')}
       </div>
       <p class="small muted" style="margin-top:16px">The wording here is a draft for the bank's strategy team to confirm.</p>`;
+  }
+
+  // ---------- Unlocks, comms, welcome pack, badge, Day 30 check-in, start date and cover ----------
+
+  const UNLOCK_ROUTE = { contract: '#/workspace', device: '#/device', kit: '#/workspace', first30: '#/first30', channels: '#/channels', welcome: '#/welcome', review: '#/review', m2: '#/next', m3: '#/next' };
+
+  function unlockPanel() {
+    const items = unlockStatus(CHAT.ME_HIRE_ID);
+    const sh = SHARED.get(CHAT.ME_HIRE_ID);
+    const open = items.filter((i) => i.open).length;
+    // Items the hire has already finished show as done, with nothing left to press
+    const done = {
+      contract: !!sh.contractSigned,
+      device: !!sh.device && sh.device.status !== 'cancelled',
+      kit: !!sh.homeOrder && !sh.homeOrder.cancelled,
+      review: !!sh.review,
+      m2: !!(sh.m2 && sh.m2.workday && sh.m2.hr),
+      m3: !!sh.m3,
+    };
+    const CTA = { contract: 'Sign contract', device: 'Choose laptop', kit: 'Order equipment', first30: 'Open plan', channels: 'See channels', welcome: 'Open pack', review: 'Start check-in', m2: 'Start checks', m3: 'Start check-in' };
+    const row = (i) => {
+      if (done[i.key]) {
+        return `
+          <div class="alert-row">
+            <span class="rag rag-green"></span>
+            <div class="alert-body"><strong>${esc(i.label)}</strong><span class="small muted">Done. Nothing more to do here.</span></div>
+            <span class="pill green">Done</span>
+          </div>`;
+      }
+      if (i.open) {
+        return `
+          <div class="alert-row">
+            <span class="rag rag-green"></span>
+            <div class="alert-body"><strong>${esc(i.label)}</strong><span class="small muted">${esc(i.how)}</span></div>
+            <a class="btn btn-sm" href="${UNLOCK_ROUTE[i.key]}">${CTA[i.key]}</a>
+          </div>`;
+      }
+      return `
+        <div class="alert-row">
+          <span class="rag rag-amber"></span>
+          <div class="alert-body"><strong>${esc(i.label)}</strong>
+            <span class="small muted">Locked. Waiting for ${esc(i.waitingFor.join(' and '))}.</span>
+            <span class="row small" style="gap:10px;margin-top:4px">
+              ${i.steps.filter((s) => s.href).map((s) => `<a href="${s.href}">${esc(s.cta)}</a>`).join('')}
+            </span>
+          </div>
+          <span class="pill grey">Locked</span>
+        </div>`;
+    };
+    return `
+      <div class="card" style="margin-bottom:16px" data-tour="unlock">
+        <div class="spread"><h2>What is unlocked</h2><span class="small muted">${open} of ${items.length} open</span></div>
+        <p class="small muted" style="margin-top:4px">Things open as you reach each step. Each row says what to do, or what it is waiting for and where to sort that out.</p>
+        <div style="margin-top:10px">
+          ${items.map(row).join('')}
+        </div>
+        <div class="row" style="margin-top:10px;gap:10px">
+          <button class="btn btn-ghost btn-sm" data-demo-days="30">Demo: jump to Day 30</button>
+          <button class="btn btn-ghost btn-sm" data-demo-days="20">Demo: jump to Day 20</button>
+          <button class="btn btn-ghost btn-sm" data-demo-days="45">Demo: jump to Day 45</button>
+          <button class="btn btn-ghost btn-sm" data-demo-days="75">Demo: jump to Day 75</button>
+          <button class="linkish small" data-demo-days="reset">Reset days</button>
+        </div>
+      </div>`;
+  }
+
+  function startMovedBanner() {
+    const sh = SHARED.get(CHAT.ME_HIRE_ID);
+    if (!sh.startMoved) return '';
+    return `<div class="banner warn" style="margin-bottom:16px">${svg('calendar')}<div><strong>Your start date has moved to ${fmtLong(person.startDate)}</strong>
+      <div class="small" style="margin-top:4px">Your contract window, delivery dates and first 30 days have been updated to match.</div></div></div>`;
+  }
+
+  // Shown on the team and chat pages while the manager is out of office
+  function coverBanner() {
+    const away = managerAway();
+    if (!away.away) return '';
+    return `<div class="banner info" style="margin-bottom:16px">${svg('people')}<div><strong>${esc(manager.name)} is away${away.until ? ' until ' + fmtShort(new Date(away.until)) : ''}</strong>
+      <div class="small" style="margin-top:4px">Your cover is ${esc(away.cover || 'a colleague')}. For anything urgent, contact them.</div></div></div>`;
+  }
+
+  function renderChannels() {
+    const sh = SHARED.get(CHAT.ME_HIRE_ID);
+    const status = unlockStatus(CHAT.ME_HIRE_ID).find((u) => u.key === 'channels');
+    const joined = sh.channels || [];
+    return `
+      ${breadcrumbs([{ label: 'Home', href: '#/home' }, { label: 'Comms and communities' }])}
+      <div class="stack" style="gap:6px;margin-top:10px">
+        <p class="eyebrow">Get connected</p>
+        <h1>Comms channels</h1>
+        <p class="muted">The channels that keep you up to date and connected. Join the ones that help.</p>
+      </div>
+      ${status.open ? '' : `<div class="banner info" style="margin-top:16px">${svg('calendar')}<div>Channels open on Day 1. Waiting for ${esc(status.waitingFor.join(' and '))}.</div></div>`}
+      <div class="grid two" style="margin-top:16px">
+        ${COMMS_CHANNELS.map((c) => `
+          <div class="card stack">
+            <div class="spread"><strong>${esc(c.name)}</strong><span class="pill grey">${esc(c.kind)}</span></div>
+            <span class="small muted">${esc(c.desc)}</span>
+            ${status.open
+              ? `<button class="btn ${joined.includes(c.id) ? 'btn-ghost is-done' : 'btn-ghost'}" data-channel-join="${c.id}">${joined.includes(c.id) ? 'Joined · leave' : 'Join channel'}</button>`
+              : '<span class="pill grey">Opens Day 1</span>'}
+          </div>`).join('')}
+      </div>`;
+  }
+
+  function renderWelcome() {
+    const sh = SHARED.get(CHAT.ME_HIRE_ID);
+    const status = unlockStatus(CHAT.ME_HIRE_ID).find((u) => u.key === 'welcome');
+    const read = sh.packRead || [];
+    const badge = sh.badge || null;
+    const badgeText = !badge ? 'Your manager will request your ID badge.'
+      : badge.status === 'requested' ? 'Requested. It will be ready for Day 1 at reception.'
+      : 'Issued. Collect it from reception on Day 1.';
+    return `
+      ${breadcrumbs([{ label: 'Home', href: '#/home' }, { label: 'Welcome pack' }])}
+      <div class="stack" style="gap:6px;margin-top:10px">
+        <p class="eyebrow">Welcome</p>
+        <h1>Your welcome pack</h1>
+        <p class="muted">Sent once you have set your goals with ${esc(manager.name)}.</p>
+      </div>
+      ${status.open ? '' : `<div class="banner info" style="margin-top:16px">${svg('check')}<div>The welcome pack opens once you have saved your goals. Waiting for ${esc(status.waitingFor.join(' and '))}.</div></div>`}
+      <div class="card" style="margin-top:16px">
+        <div class="spread"><strong>ID badge</strong><span class="pill ${badge && badge.status === 'issued' ? 'green' : 'grey'}">${badge ? (badge.status === 'issued' ? 'Issued' : 'Requested') : 'Not yet'}</span></div>
+        <p class="small muted" style="margin-top:6px">${badgeText}</p>
+      </div>
+      ${status.open ? WELCOME_PACK.map((p) => `
+        <div class="card" style="margin-top:16px">
+          <div class="spread"><h2>${esc(p.title)}</h2>${read.includes(p.id) ? '<span class="pill green">Read</span>' : ''}</div>
+          <p style="margin-top:8px">${esc(p.body)}</p>
+          ${read.includes(p.id) ? '' : `<button class="btn btn-ghost btn-sm" style="margin-top:12px" data-pack-read="${p.id}">Mark as read</button>`}
+        </div>`).join('') : ''}`;
+  }
+
+  // Day 30 check-in: how the hire feels, and what happens next
+  function renderReview() {
+    const sh = SHARED.get(CHAT.ME_HIRE_ID);
+    const status = unlockStatus(CHAT.ME_HIRE_ID).find((u) => u.key === 'review');
+    const rv = sh.review || null;
+    const plan = sh.supportPlan || null;
+    const risk = sh.riskLevel || 'green';
+    const result = rv ? `
+      <div class="banner ${rv.tone === 'green' ? 'info' : rv.tone === 'amber' ? 'warn' : 'alert'}">
+        <span class="rag rag-${rv.tone}" style="margin-top:6px"></span>
+        <div><strong>${rv.tone === 'green' ? 'Green: you are settling in well' : rv.tone === 'amber' ? 'Amber: a few things to sort out' : 'Red: you would like support'}</strong>
+          <div class="small" style="margin-top:4px">${rv.tone === 'green' ? 'Keep going. Your manager will see your progress.' : 'Your manager has been told and a support plan has been drafted below.'}</div></div>
+      </div>` : '';
+    return `
+      ${breadcrumbs([{ label: 'Home', href: '#/home' }, { label: 'Day 30 check-in' }])}
+      <div class="stack" style="gap:6px;margin-top:10px">
+        <p class="eyebrow">Day 30</p>
+        <h1>How are you settling in?</h1>
+        <p class="muted">Four quick questions. Honest answers help us put the right support in place.</p>
+      </div>
+      ${status.open ? '' : `<div class="banner info" style="margin-top:16px">${svg('calendar')}<div>This check-in opens from Day 25. Waiting for ${esc(status.waitingFor.join(' and '))}.</div></div>`}
+      ${result ? `<div style="margin-top:16px">${result}</div>` : ''}
+      ${plan ? `
+        <div class="card" style="margin-top:16px">
+          <div class="spread"><h2>Your support plan</h2><span class="pill ${risk === 'red' ? 'red' : 'amber'}">${risk === 'red' ? 'Support now' : 'Early support'}</span></div>
+          <p class="small muted" style="margin-top:6px">Drafted ${fmtShort(new Date(plan.createdOn))}. Your manager will go through it with you.</p>
+          <ul class="tips" style="margin-top:10px">${plan.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>
+          <p class="small" style="margin-top:10px">Free and confidential, any time: <strong>the Employee Assistance Programme (EAP)</strong>. Ask the assistant how to reach it.</p>
+        </div>` : ''}
+      ${status.open ? `
+        <form id="review-form" class="card stack" style="margin-top:16px">
+          ${REVIEW_QUESTIONS.map((q) => `
+            <fieldset class="review-q">
+              <legend class="field-label">${esc(q.q)}</legend>
+              <div class="row small" style="gap:16px;flex-wrap:wrap">
+                ${q.opts.map((o, i) => `<label><input type="radio" name="${q.id}" value="${o[0]}" ${i === 0 ? 'required' : ''} /> ${esc(o[1])}</label>`).join('')}
+              </div>
+            </fieldset>`).join('')}
+          <button class="btn btn-block" type="submit">${rv ? 'Send an updated check-in' : 'Send my check-in'}</button>
+        </form>` : ''}`;
+  }
+
+  // ---------- Day 30 to 90: system checks, monthly one-to-one, teething issues ----------
+
+  const SYSTEM_CHECKS = [
+    { key: 'workday', name: 'Workday', desc: 'Sign in and check your personal details, pay and time off look right.' },
+    { key: 'hr', name: 'HR', desc: 'Check you can open HR self-service, and that you know how to reach your HR contact.' },
+  ];
+  const TEETHING_TEXT = {
+    green: ['Green: no teething issues', 'Good to hear. Nothing more is needed.'],
+    amber: ['Amber: a few teething issues', 'Thanks. Your manager can see this and will pick it up at your next one-to-one.'],
+    red: ['Red: something to raise', 'Thanks for telling us. Your manager has been told and will get in touch with you.'],
+  };
+
+  function renderNext90() {
+    const me = CHAT.ME_HIRE_ID;
+    const sh = SHARED.get(me);
+    const ev = journeyEvents(me);
+    const m2 = sh.m2 || {};
+    const m3 = sh.m3 || null;
+    const period = monthPeriod(me);
+    const monthly = (sh.monthly || {})[period];
+
+    const systemCard = (s) => {
+      const state = m2[s.key];
+      return `
+        <div class="card stack">
+          <div class="spread"><strong>${esc(s.name)}</strong>
+            ${state === 'ok' ? '<span class="pill green">I can get in</span>' : state === 'problem' ? '<span class="pill red">Help requested</span>' : '<span class="pill grey">Not checked</span>'}</div>
+          <span class="small muted">${esc(s.desc)}</span>
+          ${ev.day30 ? `
+            <div class="row" style="gap:8px">
+              <button class="btn btn-sm ${state === 'ok' ? 'is-done' : ''}" data-sys="${s.key}" data-sys-state="ok">Yes, I can get in</button>
+              <button class="btn btn-ghost btn-sm" data-sys="${s.key}" data-sys-state="problem">No, I need help</button>
+            </div>
+            ${state === 'problem' ? `<span class="small muted">${esc(manager.name)} has been told. The IT helpdesk can also help with sign-in problems.</span>` : ''}` : ''}
+        </div>`;
+    };
+
+    const teethingResult = m3 ? `
+      <div class="banner ${m3.tone === 'green' ? 'info' : m3.tone === 'amber' ? 'warn' : 'alert'}" style="margin-bottom:12px">
+        <span class="rag rag-${m3.tone}" style="margin-top:6px"></span>
+        <div><strong>${esc(TEETHING_TEXT[m3.tone][0])}</strong><div class="small" style="margin-top:4px">${esc(TEETHING_TEXT[m3.tone][1])}</div></div>
+      </div>` : '';
+
+    return `
+      ${breadcrumbs([{ label: 'Home', href: '#/home' }, { label: 'Day 30 to 90' }])}
+      <div class="stack" style="gap:6px;margin-top:10px">
+        <p class="eyebrow">After your first 30 days</p>
+        <h1>Day 30 to Day 90</h1>
+        <p class="muted">Two short check-ins to make sure the basics work for you, and that anything bothering you gets raised.</p>
+      </div>
+
+      <div class="section-head"><h2>Day 30 to 60: can you get into Workday and HR?</h2>${ev.day30 ? '' : '<span class="pill grey">Opens Day 30</span>'}</div>
+      ${ev.day30 ? '' : `<div class="banner info">${svg('calendar')}<div>These checks open at Day 30.</div></div>`}
+      <div class="grid two" style="margin-top:${ev.day30 ? 0 : 12}px">${SYSTEM_CHECKS.map(systemCard).join('')}</div>
+      ${ev.day30 ? `
+        <div class="card" style="margin-top:16px">
+          <div class="spread"><strong>Monthly one-to-one</strong>${monthly
+            ? `<span class="pill green">Booked ${fmtShort(new Date(monthly))}</span>`
+            : '<span class="pill grey">Your manager will book this</span>'}</div>
+          <p class="small muted" style="margin-top:6px">After your first 30 days you meet ${esc(manager.name)} once a month.</p>
+        </div>` : ''}
+
+      <div class="section-head"><h2>Day 60 to 90: any teething issues?</h2>${ev.day60 ? '' : '<span class="pill grey">Opens Day 60</span>'}</div>
+      ${ev.day60 ? `
+        <div class="card">
+          ${teethingResult}
+          <form id="teething-form" class="stack">
+            <fieldset class="review-q">
+              <legend class="field-label">Are there any teething issues?</legend>
+              <div class="row small" style="gap:16px;flex-wrap:wrap">
+                <label><input type="radio" name="issues" value="none" required /> No, all fine</label>
+                <label><input type="radio" name="issues" value="few" /> A few small things</label>
+                <label><input type="radio" name="issues" value="many" /> Yes, some real problems</label>
+              </div>
+              <textarea class="field" name="issuesNote" rows="2" placeholder="What is getting in the way? (optional)" style="margin-top:8px"></textarea>
+            </fieldset>
+            <fieldset class="review-q">
+              <legend class="field-label">Do you need to raise anything with ${esc(manager.name)}?</legend>
+              <div class="row small" style="gap:16px;flex-wrap:wrap">
+                <label><input type="radio" name="raise" value="no" required /> No</label>
+                <label><input type="radio" name="raise" value="yes" /> Yes</label>
+              </div>
+              <textarea class="field" name="raiseNote" rows="2" placeholder="What would you like to raise? (optional)" style="margin-top:8px"></textarea>
+            </fieldset>
+            <button class="btn btn-block" type="submit">${m3 ? 'Send an updated check-in' : 'Send my check-in'}</button>
+          </form>
+        </div>` : `<div class="banner info">${svg('calendar')}<div>This check-in opens at Day 60.</div></div>`}`;
+  }
+
+  // Home banner when a Day 30 to 90 check is waiting
+  function phaseBanner() {
+    const me = CHAT.ME_HIRE_ID;
+    const sh = SHARED.get(me);
+    const ev = journeyEvents(me);
+    const m2 = sh.m2 || {};
+    let text = '';
+    if (ev.day60 && !sh.m3) text = 'Day 60 to 90 check-in: any teething issues, or anything to raise with your manager?';
+    else if (ev.day30 && !(m2.workday && m2.hr)) text = 'Day 30 to 60: check you can get into Workday and HR.';
+    if (!text) return '';
+    return `<a class="banner warn" href="#/next" style="margin-bottom:16px;text-decoration:none;color:inherit">${svg('check')}<div><strong>${esc(text)}</strong><div class="small" style="margin-top:4px">It takes a minute.</div></div></a>`;
   }
 
   function renderGoals() {
@@ -1401,7 +1727,6 @@
         </div>
       </div>
 
-      ${moodCard()}
       ${checks.length ? `
         <div class="section-head"><h2>Your check-ins</h2></div>
         <div class="card">
@@ -1412,22 +1737,6 @@
                 <span class="small muted">${c.find === 'yes' ? 'Finding things hard. ' : ''}${c.raise === 'buddy' ? 'Asked to talk to buddy. ' : ''}${c.raise === 'manager' ? 'Asked to talk to Jordan. ' : ''}${esc(c.note || '')}</span></div>
             </div>`).join('')}
         </div>` : ''}`;
-  }
-
-  // Mood chart card, used on My details and the weekly page. Offers sample weeks when there is no history yet.
-  function moodCard() {
-    const checks = SHARED.get(CHAT.ME_HIRE_ID).checkins || [];
-    const latest = checks[checks.length - 1];
-    return `
-      <div class="card" style="margin-top:16px">
-        <div class="spread"><h2>Mood over time</h2>${latest
-          ? `<span class="pill ${latest.tone === 'red' ? 'red' : latest.tone === 'amber' ? 'amber' : 'green'}">Latest: ${latest.tone === 'red' ? 'Red' : latest.tone === 'amber' ? 'Amber' : 'Green'}, week ${latest.week}</span>`
-          : '<span class="pill grey">No check-ins yet</span>'}</div>
-        <p class="small muted" style="margin-top:4px">One point a week from your weekly check-in. Higher is better.</p>
-        <div style="margin-top:12px">${moodSvg(checks)}</div>
-        <div class="legend" style="margin-top:8px"><span><i class="rag rag-green"></i>Good</span><span><i class="rag rag-amber"></i>Okay</span><span><i class="rag rag-red"></i>Low</span></div>
-        ${checks.length ? '' : '<button class="btn btn-ghost btn-sm" style="margin-top:12px" data-sample-checkins="1">Demo: add sample weeks</button>'}
-      </div>`;
   }
 
   function weeklyBanner() {
@@ -1513,6 +1822,7 @@
   function renderTeam() {
     return `
       <div class="stack" style="gap:6px">
+        ${coverBanner()}
         <p class="eyebrow">My team</p>
         <h1>Who you will meet</h1>
         <p class="muted">Your manager and buddy will reach out before Day 1. You can also book time with them yourself.</p>
@@ -1538,6 +1848,7 @@
             <span class="avatar lg">${initials(buddy.name)}</span>
             <div class="person-meta"><strong>${esc(buddy.name)}</strong><span>${esc(buddy.role)}</span></div>
           </div>
+          ${buddyProfile()}
           <div class="row" style="margin-top:14px">
             <a class="btn btn-ghost btn-sm" href="mailto:${esc(buddy.email)}">${svg('mail')} Email</a>
             <a class="btn btn-ghost btn-sm" href="#/buddy">${svg('chat')} Message${chatBadge('buddy')}</a>
@@ -1584,6 +1895,10 @@
     access: renderAccess,
     goals: renderGoals,
     purpose: renderPurpose,
+    channels: renderChannels,
+    welcome: renderWelcome,
+    review: renderReview,
+    next: renderNext90,
     weekly: renderWeekly,
     help: renderHelp,
   };
@@ -1613,19 +1928,265 @@
     else if (state.setupDone && r === 'signin') r = 'home';
     if (!ROUTES[r]) { r = 'home'; arg = null; }
 
+    // The hire's start date can move, so the shared value is read on every page
+    person.startDate = effectiveStart(CHAT.ME_HIRE_ID);
+
     const full = r + (arg ? '/' + arg : '');
     if (location.hash !== '#/' + full) history.replaceState(null, '', '#/' + full);
     renderChrome(r);
     fab.hidden = !(state.signedIn && state.setupDone) || r === 'help';
+    if (assistOpen && (r === 'help' || fab.hidden)) setAssist(false); // the full page replaces the pop-up
+    // Only a move to a different page goes back to the top. Ticking a box or pressing a button
+    // re-draws the same page, so the scroll position is kept.
+    const samePage = route.last === full;
+    const keepY = window.scrollY;
     $('#app').innerHTML = ROUTES[r](arg);
-    $('#app').focus({ preventScroll: true });
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    if (samePage) {
+      window.scrollTo({ top: keepY, behavior: 'instant' });
+    } else {
+      $('#app').focus({ preventScroll: true });
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+    route.last = full;
+    pushPending();
+
+    // Dashboard tour: starts on the first visit to Home, and stays on Home only
+    if (r === 'home' && state.signedIn && state.setupDone) {
+      if (tourStep === null && !load('tourDone', false)) startTour();
+      else showTour();
+    } else if (tourStep !== null) {
+      endTour();
+    }
+  }
+
+  // ---------- Dashboard tour ----------
+  const TOUR = [
+    { sel: null, title: 'Welcome to your dashboard', text: 'A quick tour of what is here and what to do first. It takes under a minute, and you can close it at any time.' },
+    { sel: '[data-tour="journey"]', title: 'Your journey', text: 'This shows where you are between your offer and your first 30 days, and how many steps are done.' },
+    { sel: '[data-tour="unlock"]', title: 'Start here', text: 'Things open as you go. Your first job is to sign your contract. Each row tells you what to do, or what it is waiting for and where to sort that out.' },
+    { sel: '[data-tour="todos"]', title: 'Your to-dos', text: 'Red needs action now, amber is due soon, and green is on track. Tick things off as you finish them.' },
+    { sel: '[data-tour="people"]', title: 'Your manager and buddy', text: 'Message Jordan or your buddy Sam at any time. They are here to help before you start.' },
+    { sel: '#assistant-fab', title: 'Ask anything', text: 'Not sure what an acronym means, or how to get something? Ask the assistant.' },
+  ];
+  let tourStep = null;
+  const tourBox = document.createElement('div');
+  tourBox.id = 'tour';
+  tourBox.hidden = true;
+  tourBox.setAttribute('role', 'dialog');
+  tourBox.setAttribute('aria-labelledby', 'tour-title');
+  document.body.appendChild(tourBox);
+
+  function showTour() {
+    document.querySelectorAll('.tour-highlight').forEach((e) => e.classList.remove('tour-highlight'));
+    if (tourStep === null) { tourBox.hidden = true; return; }
+    const s = TOUR[tourStep];
+    const target = s.sel ? document.querySelector(s.sel) : null;
+    if (target) {
+      target.classList.add('tour-highlight');
+      target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    const last = tourStep === TOUR.length - 1;
+    tourBox.hidden = false;
+    tourBox.innerHTML = `
+      <div class="spread"><span class="small muted">Step ${tourStep + 1} of ${TOUR.length}</span>
+        <button class="linkish small" data-tour-close="1">Close tour</button></div>
+      <h2 id="tour-title" style="margin-top:6px">${esc(s.title)}</h2>
+      <p class="small" style="margin-top:6px">${esc(s.text)}</p>
+      <div class="row" style="justify-content:flex-end;margin-top:12px;gap:8px">
+        ${tourStep > 0 ? '<button class="btn btn-ghost btn-sm" data-tour-back="1">Back</button>' : ''}
+        <button class="btn btn-sm" data-tour-next="1">${last ? 'Finish' : 'Next'}</button>
+      </div>`;
+  }
+
+  function startTour() {
+    tourStep = 0;
+    showTour();
+    const next = tourBox.querySelector('[data-tour-next]');
+    if (next) next.focus({ preventScroll: true });
+  }
+
+  function endTour() {
+    tourStep = null;
+    save('tourDone', true);
+    showTour();
+  }
+
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && tourStep !== null) endTour();
+    else if (ev.key === 'Escape' && assistOpen) { setAssist(false); fab.focus(); }
+  });
+
+  // ---------- Assistant pop-up (opens from the Ask button, stays open while you move between screens) ----------
+  let assistOpen = false;
+  const assistBox = document.createElement('div');
+  assistBox.id = 'assist-pop';
+  assistBox.hidden = true;
+  assistBox.setAttribute('role', 'dialog');
+  assistBox.setAttribute('aria-label', 'New starter assistant');
+  document.body.appendChild(assistBox);
+
+  function renderAssistPop() {
+    if (!assistOpen) { assistBox.hidden = true; return; }
+    const log = SHARED.get(CHAT.ME_HIRE_ID).assistant || [];
+    const bubbles = log.map((m) => `
+      <div class="bubble ${m.from === 'you' ? 'mine' : ''}">
+        <div class="small muted">${m.from === 'you' ? 'You' : 'Assistant'}</div>
+        <div>${esc(m.text)}</div>
+        ${(m.links || []).length ? `<div class="row" style="margin-top:8px">${m.links.map((l) => `<a class="btn btn-ghost btn-sm" href="${esc(l.href)}">${esc(l.label)}</a>`).join('')}</div>` : ''}
+      </div>`).join('');
+    const hello = log.length ? '' : `<div class="bubble">
+        <div class="small muted">Assistant</div>
+        <div>Hi ${esc(person.firstName)}. Ask me what an acronym means, or how to get something.</div>
+        <div class="quick">${ASSISTANT.EXAMPLES.map((q) => `<button type="button" class="chip" data-ask="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+      </div>`;
+    assistBox.hidden = false;
+    assistBox.innerHTML = `
+      <div class="assist-head">
+        <strong>Ask the assistant</strong>
+        <span class="row" style="gap:10px">
+          <a class="small" href="#/help" data-assist-full="1">Open full screen</a>
+          <button class="linkish small" data-assist-close="1">Close</button>
+        </span>
+      </div>
+      <div class="thread assist-thread">${hello}${bubbles}</div>
+      <form class="reply" id="assist-pop-form">
+        <label class="sr-only" for="assist-pop-text">Your question</label>
+        <textarea id="assist-pop-text" name="text" rows="2" placeholder="For example: what is DBS?" required></textarea>
+        <button class="btn btn-sm" type="submit">Ask</button>
+      </form>
+      ${log.length ? '<button class="linkish small" id="assist-clear" style="justify-self:start">Clear chat</button>' : ''}`;
+    const thread = assistBox.querySelector('.assist-thread');
+    thread.scrollTop = thread.scrollHeight;
+  }
+
+  function setAssist(open) {
+    assistOpen = open;
+    fab.setAttribute('aria-expanded', open ? 'true' : 'false');
+    renderAssistPop();
+    if (open) { const box = $('#assist-pop-text'); if (box) box.focus(); }
+  }
+
+  // ---------- Web notifications (system notifications on laptop and phone) ----------
+  // Uses the browser's Notifications API through a service worker, so it works on phones too.
+  // In this demo they fire while the app is open or running in the background. A push server
+  // would be needed to reach a device where the app is fully closed.
+  const WEBN_SUPPORTED = 'Notification' in window;
+  let swReg = null;
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('sw.js').then((reg) => { swReg = reg; }).catch(() => { swReg = null; });
+    navigator.serviceWorker.addEventListener('message', (ev) => {
+      if (ev.data && ev.data.go) location.hash = ev.data.go; // a tapped notification opens its page
+    });
+  }
+
+  function webNotifyOn() {
+    return WEBN_SUPPORTED && Notification.permission === 'granted' && load('webNotify', false);
+  }
+
+  function showWebNotification(n) {
+    const opts = { body: n.text || '', icon: 'brand/icon-192.png', badge: 'brand/icon-192.png', tag: n.id, data: { url: n.link || '#/home' } };
+    if (swReg && swReg.showNotification) return swReg.showNotification(n.title, opts);
+    try {
+      const x = new Notification(n.title, opts);
+      x.onclick = () => { window.focus(); location.hash = opts.data.url; x.close(); };
+    } catch (e) { /* some phones only allow notifications through the service worker */ }
+    return null;
+  }
+
+  // Everything the hire has not been notified about yet: updates from the team, and new chat messages
+  function pendingForPush() {
+    const pushed = load('pushed', []);
+    const items = NOTIFY.list('hire').filter((n) => !n.read && !pushed.includes(n.id))
+      .map((n) => ({ id: n.id, title: n.title, text: n.text, link: n.link && n.link.indexOf('#') === 0 ? n.link : '#/first30' }));
+    [['manager', '#/chat'], ['buddy', '#/buddy']].forEach(([channel, link]) => {
+      CHAT.thread(CHAT.ME_HIRE_ID, channel).forEach((m) => {
+        if (m.from === 'hire' || m.read.hire || pushed.includes(m.id)) return;
+        const who = m.name || (m.from === 'buddy' ? buddy.name : m.from === 'hr' ? 'HR Onboarding' : manager.name);
+        items.push({ id: m.id, title: 'New message from ' + who, text: m.text, link: link });
+      });
+    });
+    return items;
+  }
+
+  function pushPending() {
+    if (!webNotifyOn()) return;
+    const items = pendingForPush();
+    if (!items.length) return;
+    save('pushed', load('pushed', []).concat(items.map((i) => i.id)).slice(-300));
+    items.slice(0, 4).forEach(showWebNotification);
+  }
+
+  // Card on Home (until answered) and on My details (always), to turn notifications on or off
+  function notifyCard(onHome) {
+    if (!WEBN_SUPPORTED) {
+      return onHome ? '' : `<div class="card" style="margin-top:16px"><h2>Notifications on this device</h2>
+        <p class="small muted" style="margin-top:6px">This browser does not support notifications. On an iPhone, add the app to your Home Screen first.</p></div>`;
+    }
+    const perm = Notification.permission;
+    const on = webNotifyOn();
+    if (onHome && (on || perm === 'denied' || load('webNotifyAsked', false))) return '';
+    const status = on ? '<span class="pill green">On</span>' : perm === 'denied' ? '<span class="pill red">Blocked</span>' : '<span class="pill grey">Off</span>';
+    const body = perm === 'denied'
+      ? '<p class="small muted" style="margin-top:6px">Notifications are blocked for this site. Allow them in your browser\'s site settings, then come back here.</p>'
+      : on
+        ? `<p class="small muted" style="margin-top:6px">You get a notification here when your manager, buddy or the onboarding team sends something.</p>
+           <div class="row" style="margin-top:12px;gap:8px">
+             <button class="btn btn-ghost btn-sm" data-webnotify="test">Send a test notification</button>
+             <button class="btn btn-ghost btn-sm" data-webnotify="off">Turn off</button>
+           </div>`
+        : `<p class="small muted" style="margin-top:6px">Get a notification on this device when your manager, buddy or the onboarding team sends something, even when you are in another tab or app.</p>
+           <div class="row" style="margin-top:12px;gap:8px">
+             <button class="btn btn-sm" data-webnotify="on">Turn on notifications</button>
+             ${onHome ? '<button class="btn btn-ghost btn-sm" data-webnotify="later">Not now</button>' : ''}
+           </div>`;
+    return `
+      <div class="card" style="margin-${onHome ? 'bottom' : 'top'}:16px">
+        <div class="spread"><h2>Notifications on this device</h2>${status}</div>
+        ${body}
+      </div>`;
   }
 
   // ---------- Events (delegated) ----------
   document.addEventListener('click', (ev) => {
     const el = ev.target.closest('button, a');
     if (!el) return;
+
+    if (el.dataset.webnotify) {
+      const act = el.dataset.webnotify;
+      if (act === 'later') { save('webNotifyAsked', true); return route(); }
+      if (act === 'off') { save('webNotify', false); toast('Notifications turned off on this device'); return route(); }
+      if (act === 'test') {
+        showWebNotification({ id: 'test-' + Date.now(), title: 'Test notification', text: 'This is how updates from your team will appear.', link: '#/home' });
+        toast('Test notification sent');
+        return;
+      }
+      // Turning on has to come from a click, which is why it is a button
+      Notification.requestPermission().then((perm) => {
+        save('webNotifyAsked', true);
+        if (perm === 'granted') {
+          save('webNotify', true);
+          // Do not replay old updates: start from now
+          save('pushed', load('pushed', []).concat(pendingForPush().map((i) => i.id)).slice(-300));
+          showWebNotification({ id: 'on-' + Date.now(), title: 'Notifications are on', text: 'You will hear from your manager, buddy and the onboarding team here.', link: '#/home' });
+          toast('Notifications turned on');
+        } else {
+          toast(perm === 'denied' ? 'Notifications were blocked in the browser' : 'Notifications were not turned on');
+        }
+        route();
+      });
+      return;
+    }
+    if (el.id === 'assistant-fab') { ev.preventDefault(); setAssist(!assistOpen); return; }
+    if (el.dataset.assistClose) { setAssist(false); fab.focus(); return; }
+    if (el.dataset.assistFull) { setAssist(false); return; } // the link itself goes to the full page
+    if (el.dataset.tourNext) {
+      if (tourStep === TOUR.length - 1) { endTour(); toast('Tour finished. You can replay it from the bottom of Home'); }
+      else { tourStep += 1; showTour(); const n = tourBox.querySelector('[data-tour-next]'); if (n) n.focus({ preventScroll: true }); }
+      return;
+    }
+    if (el.dataset.tourBack) { tourStep = Math.max(0, tourStep - 1); showTour(); return; }
+    if (el.dataset.tourClose) { endTour(); return; }
+    if (el.dataset.tourStart) { save('tourDone', false); startTour(); return; }
 
     if (el.id === 'sso-btn') {
       state.signedIn = true; save('signedIn', true);
@@ -1655,6 +2216,37 @@
       state.doneTodos = was ? state.doneTodos.filter((x) => x !== id) : [...state.doneTodos, id];
       save('doneTodos', state.doneTodos);
       toast(was ? 'Marked as not done' : 'Nice, marked as done');
+      return route();
+    }
+    if (el.dataset.sys) {
+      const me = CHAT.ME_HIRE_ID;
+      const key = el.dataset.sys;
+      const st = el.dataset.sysState;
+      const sys = SYSTEM_CHECKS.find((s) => s.key === key);
+      SHARED.update(me, { m2: Object.assign({}, SHARED.get(me).m2, { [key]: st }) });
+      if (st === 'problem') {
+        NOTIFY.add({ to: 'manager', type: 'system', tone: 'amber', hireId: me, title: person.name.split(' ')[0] + ' cannot get into ' + sys.name,
+          text: 'Raised in the Day 30 to 60 check. Help them get access.', link: '#/hire/' + me });
+      }
+      toast(st === 'ok' ? sys.name + ' confirmed' : 'Help requested. ' + manager.name + ' has been told');
+      return route();
+    }
+    if (el.dataset.demoDays) {
+      const v = el.dataset.demoDays;
+      SHARED.update(CHAT.ME_HIRE_ID, { demoDays: v === 'reset' ? undefined : Number(v) });
+      toast(v === 'reset' ? 'Days reset to the real calendar' : 'Journey jumped to Day ' + v + ' (demo)');
+      return route();
+    }
+    if (el.dataset.channelJoin) {
+      const id = el.dataset.channelJoin;
+      const joined = SHARED.get(CHAT.ME_HIRE_ID).channels || [];
+      SHARED.update(CHAT.ME_HIRE_ID, { channels: joined.includes(id) ? joined.filter((x) => x !== id) : joined.concat(id) });
+      return route();
+    }
+    if (el.dataset.packRead) {
+      const id = el.dataset.packRead;
+      const read = SHARED.get(CHAT.ME_HIRE_ID).packRead || [];
+      SHARED.update(CHAT.ME_HIRE_ID, { packRead: read.concat(id) });
       return route();
     }
     if (el.dataset.journeyNext) {
@@ -1754,11 +2346,11 @@
     }
     if (el.dataset.ask) {
       askAssistant(el.dataset.ask);
-      return route();
+      return assistOpen ? renderAssistPop() : route();
     }
     if (el.id === 'assist-clear') {
       SHARED.update(CHAT.ME_HIRE_ID, { assistant: [] });
-      return route();
+      return assistOpen ? renderAssistPop() : route();
     }
     if (el.id === 'updates-read') {
       NOTIFY.markAll('hire');
@@ -1861,11 +2453,56 @@
   });
 
   document.addEventListener('submit', (ev) => {
+    const pop = ev.target.closest('#assist-pop-form');
+    if (pop) {
+      ev.preventDefault();
+      const q = pop.elements.text.value.trim();
+      if (q) askAssistant(q);
+      renderAssistPop();
+      const box = $('#assist-pop-text');
+      if (box) box.focus();
+      return;
+    }
     const assist = ev.target.closest('#assist-form');
     if (assist) {
       ev.preventDefault();
       const t = assist.elements.text.value.trim();
       if (t) askAssistant(t);
+      return route();
+    }
+    const teething = ev.target.closest('#teething-form');
+    if (teething) {
+      ev.preventDefault();
+      const me = CHAT.ME_HIRE_ID;
+      const f = teething.elements;
+      const a = { issues: f.issues.value, issuesNote: f.issuesNote.value.trim(), raise: f.raise.value, raiseNote: f.raiseNote.value.trim(), at: TODAY.toISOString() };
+      a.tone = a.raise === 'yes' || a.issues === 'many' ? 'red' : a.issues === 'few' ? 'amber' : 'green';
+      SHARED.update(me, { m3: a });
+      if (a.tone !== 'green') {
+        const first = person.name.split(' ')[0];
+        NOTIFY.add({ to: 'manager', type: 'teething', tone: a.tone, hireId: me,
+          title: (a.raise === 'yes' ? first + ' has something to raise with you' : first + ' has some teething issues') + ' (Day 60 to 90)',
+          text: [a.raiseNote ? '"' + a.raiseNote.slice(0, 100) + '"' : '', a.issuesNote ? '"' + a.issuesNote.slice(0, 100) + '"' : ''].filter(Boolean).join(' ') || 'No details given. Check in with them.',
+          link: '#/hire/' + me });
+      }
+      toast(a.tone === 'green' ? 'Check-in sent. Thanks' : 'Check-in sent. ' + manager.name + ' has been told');
+      return route();
+    }
+    const reviewForm = ev.target.closest('#review-form');
+    if (reviewForm) {
+      ev.preventDefault();
+      const me = CHAT.ME_HIRE_ID;
+      const answers = {};
+      let points = 0;
+      REVIEW_QUESTIONS.forEach((q) => {
+        const val = new FormData(reviewForm).get(q.id);
+        answers[q.id] = val;
+        points += val === 'low' ? 2 : val === 'some' ? 1 : 0;
+      });
+      const tone = points >= 3 ? 'red' : points >= 1 ? 'amber' : 'green';
+      SHARED.update(me, { review: { answers: answers, tone: tone, at: TODAY.toISOString() } });
+      checkRisk(me);
+      toast(tone === 'green' ? 'Thanks. Check-in sent' : 'Thanks. Your manager has been told and a support plan is drafted');
       return route();
     }
     const goalsForm = ev.target.closest('#goals-form');
@@ -1876,7 +2513,9 @@
       SHARED.update(CHAT.ME_HIRE_ID, { goals: { items: items, savedOn: TODAY.toISOString() } });
       NOTIFY.add({ to: 'manager', type: 'goals', hireId: CHAT.ME_HIRE_ID, title: 'Goals set: ' + person.name,
         text: items.length + ' goal' + (items.length === 1 ? '' : 's') + ' saved for the first 30 days.', link: '#/hire/' + CHAT.ME_HIRE_ID });
-      toast('Goals saved. Jordan has been told');
+      // Setting goals unlocks the welcome pack
+      NOTIFY.add({ to: 'hire', type: 'pack', title: 'Your welcome pack is ready', text: 'Your goals are saved, so your welcome pack is open.', link: '#/welcome' });
+      toast('Goals saved. Your welcome pack is open');
       return route();
     }
     const ben = ev.target.closest('#benefits-form');
@@ -1958,9 +2597,10 @@
 
   // Keep this tab in step when the manager portal replies in another tab
   window.addEventListener('storage', (ev) => {
-    if (ev.key !== CHAT.KEY && ev.key !== 'lbg.shared') return;
+    if (ev.key !== CHAT.KEY && ev.key !== 'lbg.shared' && ev.key !== NOTIFY.KEY) return;
+    pushPending(); // system notification for anything new from the manager, buddy or onboarding
     if (document.activeElement && document.activeElement.tagName === 'TEXTAREA') return;
-    if (location.hash.indexOf('#/chat') === 0 || location.hash === '' || location.hash === '#/home' || location.hash === '#/team') route();
+    route();
   });
 
   window.addEventListener('hashchange', route);

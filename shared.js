@@ -38,10 +38,14 @@ const NOTIFY = (function () {
   // n: { to: 'manager', type, title, text, hireId, link, action }
   function add(n) {
     const list = read();
+    const away = SHARED.get('_manager');
+    // While the manager is out of office, manager alerts are tagged for the named cover
+    const cover = n.to === 'manager' && away.away && away.cover ? away.cover : null;
     list.unshift(Object.assign({
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       read: false,
       time: new Date(2026, 10, 9).toISOString(), // demo "today"
+      cover: cover,
     }, n));
     write(list);
   }
@@ -106,6 +110,7 @@ function readiness(hireId) {
 
 // Tells the manager once when every action is complete. Called from SHARED.update.
 function checkReady(hireId) {
+  if (!HIRES.find((x) => x.id === hireId)) return; // not a hire (e.g. the manager's own settings)
   const sh = SHARED.get(hireId);
   if (sh.readyNotified) return;
   if (sh.cancel && sh.cancel.status) return; // withdrawn or cancelled
@@ -232,4 +237,195 @@ function moodSvg(checks) {
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Mood by week: ${pts.length} check-ins" style="width:100%;height:auto;display:block">
     ${bands}${axis}${line}${dots}${empty}
   </svg>`;
+}
+
+// The onboarding "notify" step: tell the buddy and the new starter. Sent once per hire.
+function notifyOnboardingDone(hireId) {
+  if (SHARED.get(hireId).buddyNotified) return;
+  SHARED.update(hireId, { buddyNotified: true });
+  const h = HIRES.find((x) => x.id === hireId);
+  const first = h.name.split(' ')[0];
+  CHAT.send(hireId, 'hr', first + ' has been set up for their first day. Their accounts, access and equipment are in place. Please say hello before Day 1.',
+    'Onboarding team', 'buddy');
+  NOTIFY.add({ to: 'hire', hireId: hireId, type: 'onboarding', title: 'Your accounts are set up',
+    text: 'Your buddy and team have been told. Check My details and First 30 days for what comes next.', link: '#/first30' });
+}
+
+// ---------- Start dates, unlocks, Day 30 and risk ----------
+
+// The hire's start date, after any move made by the manager
+function effectiveStart(hireId) {
+  const sh = SHARED.get(hireId);
+  const h = HIRES.find((x) => x.id === hireId);
+  return sh.startDate ? new Date(sh.startDate) : h.startDate;
+}
+
+// Days since Day 1 (negative before). The demo can jump the journey to Day 30 with a button.
+function daysIn(hireId) {
+  const sh = SHARED.get(hireId);
+  if (typeof sh.demoDays === 'number') return sh.demoDays;
+  return Math.floor((TODAY - effectiveStart(hireId)) / 86400000);
+}
+
+// Delivery note for home equipment, worked out from the (possibly moved) start date
+function deliveryNote(d, hireId) {
+  const start = effectiveStart(hireId || 'alex');
+  const when = new Date(start.getFullYear(), start.getMonth(), start.getDate() + (d.id === 'day-before' ? -1 : 0));
+  return fmtLong(when) + (d.id === 'day-1' ? ', before 9:00' : ', morning');
+}
+
+// Events the journey is built from. Each one is either done (a fact) or not yet.
+function journeyEvents(hireId) {
+  const sh = SHARED.get(hireId);
+  const h = HIRES.find((x) => x.id === hireId);
+  const start = effectiveStart(hireId);
+  const days = daysIn(hireId);
+  const goals = !!(sh.goals && sh.goals.items && sh.goals.items.length);
+  return {
+    vetting: !!sh.vettingDone || h.vetting.every((c) => c.status === 'complete'),
+    family: !!sh.family,
+    contractWindow: true, // the contract can be signed whenever it is available
+    contract: !!sh.contractSigned,
+    goals: goals,
+    day1: TODAY >= start || !!sh.demoDay1 || days >= 0,
+    day25: days >= 25,
+    day30: days >= 30,
+    day60: days >= 60,
+  };
+}
+
+// What each part of the journey is waiting for. Shown to the hire so the unlock is visible, not withheld.
+// `how` says what to do once the item is open. Each need can carry a link to where it gets sorted out.
+const UNLOCK_RULES = [
+  { key: 'contract', label: 'Employment contract', how: 'Ready now. Read and sign it on the Home workspace page.', needs: [] },
+  { key: 'device', label: 'Laptop choice', how: 'Pick Windows or Mac on the Your device page.', needs: [['vetting', 'vetting to be cleared'], ['family', 'your manager to set your job family']] },
+  { key: 'kit', label: 'Home equipment', how: 'Order your monitor, chair, desk and cables on the Home workspace page.', needs: [['contract', 'your contract to be signed']] },
+  { key: 'first30', label: 'First 30 days plan', how: 'Your Day 1 tasks, training and one-to-one are on the plan.', needs: [['day1', 'Day 1']] },
+  { key: 'channels', label: 'Comms channels and community pages', how: 'Join the channels that keep you connected.', needs: [['day1', 'Day 1']] },
+  { key: 'welcome', label: 'Welcome pack', how: 'Read your welcome letter and first week guide.', needs: [['goals', 'your goals to be saved with your manager']] },
+  { key: 'review', label: 'Day 30 check-in', how: 'Tell us how you are settling in.', needs: [['day25', 'Day 25']] },
+  { key: 'm2', label: 'Day 30 to 60: Workday and HR checks', how: 'Check you can get into Workday and HR.', needs: [['day30', 'Day 30']] },
+  { key: 'm3', label: 'Day 60 to 90: teething issues check-in', how: 'Tell us about any teething issues, or anything to raise with your manager.', needs: [['day60', 'Day 60']] },
+];
+
+// Where each waiting step gets sorted out, so a locked item is never a dead end
+const UNLOCK_STEP_LINK = {
+  vetting: { href: '#/vetting', cta: 'See vetting progress' },
+  family: { href: '#/chat', cta: 'Message your manager' },
+  contract: { href: '#/workspace', cta: 'Sign your contract' },
+  goals: { href: '#/goals', cta: 'Set your goals' },
+};
+
+function unlockStatus(hireId) {
+  const ev = journeyEvents(hireId);
+  return UNLOCK_RULES.map((r) => {
+    const missing = r.needs.filter(([e]) => !ev[e]);
+    return {
+      key: r.key,
+      label: r.label,
+      how: r.how,
+      open: missing.length === 0,
+      waitingFor: missing.map(([, text]) => text),
+      steps: missing.map(([e, text]) => Object.assign({ text: text }, UNLOCK_STEP_LINK[e] || {})),
+    };
+  });
+}
+
+// Wellbeing and early risk. Runs from the check-ins, the plan and the Day 30 review.
+function riskLevel(hireId) {
+  const sh = SHARED.get(hireId);
+  const reasons = [];
+  let level = 'green';
+  const checks = sh.checkins || [];
+  const last = checks[checks.length - 1];
+  const prev = checks[checks.length - 2];
+  if (last && last.tone === 'red') { level = 'red'; reasons.push('Latest weekly check-in is red'); }
+  if (last && last.tone === 'amber' && prev && prev.tone === 'amber') { if (level !== 'red') level = 'amber'; reasons.push('Two amber check-ins in a row'); }
+  if (sh.review && sh.review.tone === 'red') { level = 'red'; reasons.push('Day 30 check-in needs support'); }
+  if (sh.review && sh.review.tone === 'amber' && level === 'green') { level = 'amber'; reasons.push('Day 30 check-in shows some gaps'); }
+  if (daysIn(hireId) >= 20 && planPercent(hireId) < 50) {
+    if (level === 'green') level = 'amber';
+    reasons.push('Less than half of the first 30 days plan is done by Day 20');
+  }
+  return { level: level, reasons: reasons };
+}
+
+// Plan progress for the first 30 days (same items the hire sees)
+function planPercent(hireId) {
+  const sh = SHARED.get(hireId);
+  const done = FIRST30_PLAN.filter((item) => {
+    if (item.video) return !!(sh.videos || {})[item.video];
+    if (item.oneToOne) return !!sh.oneToOne;
+    if (item.intros) return TEAM_INTROS.every((i) => (sh.intros || {})[i.id]);
+    if (item.benefits) return !!sh.benefits;
+    if (item.communities) return (sh.communities || []).length > 0;
+    if (item.goals) return !!(sh.goals && sh.goals.items && sh.goals.items.length);
+    if (item.access) { const items = accessItems(hireId); return items.length > 0 && items.every((i) => (sh.access || {})[i.key] === 'verified'); }
+    return !!(sh.first30 || {})[item.key];
+  }).length;
+  return Math.round((done / FIRST30_PLAN.length) * 100);
+}
+
+// Raises the risk once per change of level, and writes a support plan when it turns amber or red
+function checkRisk(hireId) {
+  const sh = SHARED.get(hireId);
+  const r = riskLevel(hireId);
+  if (r.level === (sh.riskLevel || 'green')) return r;
+  SHARED.update(hireId, { riskLevel: r.level, riskReasons: r.reasons });
+  if (r.level !== 'green') {
+    const h = HIRES.find((x) => x.id === hireId);
+    if (!sh.supportPlan) {
+      SHARED.update(hireId, { supportPlan: { createdOn: TODAY.toISOString(), actions: [
+        'Book a one-to-one with the manager this week',
+        'Buddy catch-up call to talk through the week',
+        'Look at the first 30 days plan together and pick one thing to finish',
+        'Remind them of the free, confidential EAP support',
+      ] } });
+    }
+    NOTIFY.add({ to: 'manager', type: 'risk', tone: r.level === 'red' ? 'red' : 'amber', hireId: hireId,
+      title: (r.level === 'red' ? 'Support needed now: ' : 'Early support check: ') + h.name,
+      text: r.reasons.join('. ') + '. A support plan has been drafted.', link: '#/hire/' + hireId, action: 'Open support plan' });
+  }
+  return r;
+}
+
+// Manager's out-of-office and cover, stored under the manager key
+function managerAway() {
+  return SHARED.get('_manager');
+}
+
+// Compact mood trend for the manager: one small traffic-light shape per week, latest on the right
+function moodStrip(checks) {
+  const byWeek = {};
+  (checks || []).forEach((c) => { byWeek[c.week] = c; });
+  const weeks = Object.keys(byWeek).map(Number).sort((a, b) => a - b);
+  if (!weeks.length) return '';
+  const word = { green: 'Good', amber: 'Okay', red: 'Low' };
+  return `<div class="mood-strip" role="list" aria-label="Mood by week">
+    ${weeks.map((w) => `<span class="mood-week" role="listitem" title="Week ${w}: ${word[byWeek[w].tone]}">
+      <span class="rag rag-${byWeek[w].tone}" role="img" aria-label="Week ${w}: ${word[byWeek[w].tone]}"></span><span class="small muted">W${w}</span></span>`).join('')}
+  </div>`;
+}
+
+// ---------- After Day 30: monthly one-to-ones ----------
+
+// Which month of the role the hire is in after Day 30 (1 = Day 30 to 59, 2 = Day 60 to 89). 0 before Day 30.
+function monthPeriod(hireId) {
+  const d = daysIn(hireId);
+  return d >= 30 ? Math.floor(d / 30) : 0;
+}
+
+// Reminds the manager once per month to book the monthly one-to-one, if it is not booked yet
+function checkMonthly(hireId) {
+  const p = monthPeriod(hireId);
+  if (!p) return;
+  const sh = SHARED.get(hireId);
+  if (sh.cancel && sh.cancel.status) return;
+  if ((sh.monthly || {})[p] || (sh.monthlyReminded || {})[p]) return;
+  SHARED.update(hireId, { monthlyReminded: Object.assign({}, sh.monthlyReminded, { [p]: true }) });
+  const h = HIRES.find((x) => x.id === hireId);
+  NOTIFY.add({ to: 'manager', type: 'monthly', tone: 'amber', hireId: hireId,
+    title: "Reminder: book this month's one-to-one with " + h.name.split(' ')[0],
+    text: 'Day ' + (p * 30) + ' to ' + ((p + 1) * 30) + '. A monthly one-to-one keeps things on track after the first 30 days.',
+    link: '#/hire/' + hireId, action: 'Book one-to-one' });
 }

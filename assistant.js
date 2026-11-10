@@ -41,7 +41,7 @@ const ASSISTANT = (function () {
     {
       id: 'contract',
       keys: ['contract', 'sign', 'signature', 'offer letter'],
-      answer: 'Your contract opens one week before your start date. You sign it on the Home workspace page. Signing unlocks your home equipment order.',
+      answer: 'Your contract is ready to sign now. You sign it on the Home workspace page. Signing unlocks your home equipment order.',
       links: [{ label: 'Open contract', href: '#/workspace' }],
     },
     {
@@ -77,7 +77,7 @@ const ASSISTANT = (function () {
     {
       id: 'pay',
       keys: ['payslip', 'pay', 'paid', 'salary', 'wage', 'when do i get paid', 'pay date'],
-      answer: 'You are paid monthly on the last working day. Your agreed salary and first pay date are on My details.',
+      answer: 'You are paid monthly on the 20th, or the working day before if the 20th falls on a weekend or bank holiday. Your agreed salary and first pay date are on My details.',
       links: [{ label: 'Salary and pay', href: '#/me' }],
     },
     {

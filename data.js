@@ -28,10 +28,11 @@ const DEMO = {
     // Pay (dummy)
     salary: 525000,
     salaryBasis: 'per year, gross',
-    payFrequency: 'Paid monthly on the last working day',
+    payDay: 20,
+    payFrequency: 'Paid monthly on the 20th (or the working day before, if the 20th is a weekend or bank holiday)',
     salaryAgreedOn: D(2026, 10, 14),
     bonusEligible: 'Yes, annual discretionary bonus (pro-rata in your first year)',
-    firstPayDate: D(2027, 2, 26),
+    firstPayDate: D(2027, 2, 19), // 20 Feb 2027 is a Saturday, so pay lands on Friday 19th
   },
 
   manager: {
@@ -45,6 +46,10 @@ const DEMO = {
     name: 'Sam Okafor',
     role: 'Business Analyst, 2 years in role',
     email: 'sam.okafor@lloydsbankinggroup.com',
+    // Buddy profile (dummy). Written in the buddy's own words.
+    yearsService: 6,
+    bio: 'I joined the bank six years ago in Customer Operations and moved into data two years ago. I remember how much there is to take in at the start, so ask me anything. Outside work I run with the Canary Wharf club and I am usually first to the coffee machine.',
+    skills: ['Requirements gathering', 'SQL and reporting tools', 'Dashboard design', 'Stakeholder workshops', 'Getting things unblocked'],
   },
 
   // Journey stages, in order. status: done | current | upcoming
@@ -182,7 +187,7 @@ const DEMO = {
     {
       id: 't7',
       title: 'Sign your employment contract',
-      detail: 'Opens one week before you start (Mon 25 Jan 2027). We will remind you then.',
+      detail: 'Ready to sign now on the Home workspace page. Signing unlocks your home equipment order.',
       due: D(2027, 1, 25),
       rag: 'green',
       cta: 'Open contract',
